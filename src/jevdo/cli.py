@@ -8,9 +8,9 @@ string `expected` runs max_steps = 1, an array runs len(expected) steps)."""
 from __future__ import annotations
 
 import argparse
-import dataclasses
 import sys
 
+from jevdo.api import apply_provider_overrides
 from jevdo.config import ConfigError, load_config
 from jevdo.dispatcher import (
     continue_info, continue_requested, describe_action, dispatch,
@@ -28,23 +28,9 @@ EXIT_EVAL_FAIL = 5
 
 def apply_cli_overrides(config, args):
     """Fold --provider/--base-url into the loaded config. Returns new config."""
-    provider = getattr(args, "provider", None)
-    base_url = getattr(args, "base_url", None)
-    if provider is None and base_url is None:
-        return config
-    from jevdo.config import PROVIDERS, ConfigError
-    if provider is not None and provider not in PROVIDERS:
-        raise ConfigError(f"--provider must be one of {PROVIDERS}")
-    if base_url is not None:
-        base_url = base_url.strip().rstrip("/")
-        if not base_url or not (base_url.startswith("http://")
-                                or base_url.startswith("https://")):
-            raise ConfigError("--base-url must start with http:// or https://")
-    return dataclasses.replace(
-        config,
-        provider=provider if provider is not None else config.provider,
-        base_url=base_url if base_url is not None else config.base_url,
-    )
+    return apply_provider_overrides(
+        config, getattr(args, "provider", None),
+        getattr(args, "base_url", None))
 
 
 def build_parser() -> argparse.ArgumentParser:

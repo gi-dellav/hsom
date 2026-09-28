@@ -147,6 +147,54 @@ jevdo "run tests" --provider openrouter --dry-run  # one-shot OpenRouter routing
 jevdo --eval eval.toml                 # eval harness: plans only, never runs
 ```
 
+## Python library
+
+`jevdo` is also an importable library built around the `Harness` class
+(sync-only). The CLI uses the same machinery.
+
+```bash
+pip install jevdo
+```
+
+```python
+from jevdo import Harness
+
+# Config: environment.toml path, EnvConfig, or TOML-shaped dict.
+h = Harness(env="environment.toml")
+h = Harness(env={"meta": {"model": "jev-latest"},
+                 "command": [{"name": "pytest", "description": "run tests",
+                               "argv": ["pytest", "-q"]}]})
+
+# Single-shot plan (max_steps=1) -> PlanOutcome(ok, action, reason, ...).
+outcome = h.plan("brief git history")
+if outcome.ok:
+    print(h.resolve(outcome.action))   # argv from the toml template only
+
+# Chained run -> RunResult(steps, stop_reason, ok, declined).
+result = h.run("run tests", max_steps=3, dry_run=True)
+print(result.stop_reason, [s.argv for s in result.steps])
+
+# Write/destructive steps never prompt on stdin here. Pass on_confirm
+# (default None = fail-closed auto-decline, like the CLI off-tty):
+result = h.run("stage readme", on_confirm=lambda action, argv: True)
+
+# Dynamic working directory: subclass, pass get_cwd=..., assign
+# h.get_cwd = lambda: ..., or h.set_cwd_fn(...) / h.set_cwd(...).
+# A per-call cwd=... always wins over get_cwd().
+h.set_cwd_fn(lambda: "/path/to/project")
+result = h.run("run tests", cwd="/override", dry_run=True)
+
+# Eval harness (plans only, never executes) -> EvalSummary.
+summary = h.eval("eval.toml")
+print(f"{summary.passed}/{summary.total} passed")
+```
+
+Lower-level pieces are re-exported too (`plan_full`, `execute`,
+`load_config`, `load_eval`, `PlannedAction`, `EnvConfig`, ...). See
+`examples/library_usage.py` for a runnable version (`dry_run=True`
+except the live `plan` demo, which needs `TYPESAFE_API_KEY` or
+`OPENROUTER_API_KEY` + `provider="openrouter"`).
+
 ### Abstention and confidence
 
 `none_of_the_above` semantics, by layer:
@@ -219,6 +267,7 @@ Nothing is written without `--log`. The file opens in append mode.
 - `src/jevdo/dispatcher.py` – `system_one` call, branch reader, `dispatch_sequence`
 - `src/jevdo/executor.py` – strict multi-slot/`{value}` resolution + `subprocess`
 - `src/jevdo/cli.py` – `jevdo` entrypoint, confirm prompt, step transcript
+- `src/jevdo/api.py` – `Harness`/`RunResult` Python library API (CLI uses it)
 - `src/jevdo/eval.py` – `--eval` toml loading + no-exec comparison harness
 - `src/jevdo/runlog.py` – opt-in JSONL run logging (`--log`)
-- `tests/` – 116 tests (`PYTHONPATH=src:tests pytest`)
+- `tests/` – 134 tests (`PYTHONPATH=src:tests pytest`)

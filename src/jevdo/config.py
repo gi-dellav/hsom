@@ -181,6 +181,15 @@ class EnvConfig:
                 return c
         return None
 
+    @classmethod
+    def from_dict(cls, data: dict, source: str = "<dict>") -> "EnvConfig":
+        """Build an EnvConfig from an already-parsed TOML dict.
+
+        Same validation as :func:`load_config`; ``source`` only labels
+        error messages.
+        """
+        return _build_config(data, source)
+
     @property
     def effective_base_url(self) -> str | None:
         """SDK base URL: explicit base_url, else OpenRouter default, else SDK default."""
@@ -548,8 +557,13 @@ def load_config(path: str) -> EnvConfig:
         raise ConfigError(f"environment file not found: {path}")
     except Exception as e:
         raise ConfigError(f"failed to parse {path}: {e}")
+    return _build_config(data, path)
+
+
+def _build_config(data: dict, source: str) -> EnvConfig:
+    """Validate a parsed TOML dict into an EnvConfig. Raises ConfigError."""
     if not isinstance(data, dict):
-        raise ConfigError(f"{path}: top level must be tables")
+        raise ConfigError(f"{source}: top level must be tables")
 
     meta = data.get("meta", {})
     if meta is None:
