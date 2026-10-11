@@ -567,3 +567,53 @@ argv = ["pytest", "-q"]
     rc = cli.main(["--env", str(env), "--cwd", str(tmp_path),
                    "--temperature", "0.4", "run tests"])
     assert rc == cli.EXIT_OK and seen["temperature"] == 0.4
+
+
+def _write_env(tmp_path):
+    env = tmp_path / "environment.toml"
+    env.write_text('[meta]\nmodel = "jev-latest"\n' + """\
+[[command]]
+name = "pytest"
+description = "tests"
+argv = ["pytest", "-q"]
+""")
+    return str(env)
+
+
+def test_cli_surfaces_jev_error_as_distinct_exit(monkeypatch, tmp_path):
+    import httpx2
+    from typesafe_sdk import TypeSafeInternalServerError
+
+    from jevdo import cli
+
+    monkeypatch.setenv("TYPESAFE_API_KEY", "x")
+
+    def boom_dispatch(cfg, request, cwd=".", **kw):
+        raise TypeSafeInternalServerError(500, "kaboom", httpx2.Headers())
+
+    monkeypatch.setattr(cli, "dispatch", boom_dispatch)
+    rc = cli.main(["--env", _write_env(tmp_path), "--cwd", str(tmp_path),
+                   "run tests"])
+    assert rc == cli.EXIT_JEV_ERROR
+
+
+def test_cli_sequence_surfaces_jev_error_as_distinct_exit(monkeypatch, tmp_path, capsys):
+    import httpx2
+    from typesafe_sdk import TypeSafeAPIConnectionError
+
+    from jevdo import cli
+    from jevdo.config import load_config
+
+    monkeypatch.setenv("TYPESAFE_API_KEY", "x")
+    cfg = load_config(_write_env(tmp_path))
+    args = cli.build_parser().parse_args(
+        ["--max-steps", "2", "--cwd", str(tmp_path), "run tests"])
+
+    def boom_dispatch(config, request, cwd=".", **kw):
+        raise TypeSafeAPIConnectionError("no route")
+
+    monkeypatch.setattr(cli, "dispatch", boom_dispatch)
+    rc = cli.run_sequence(cfg, args, 2)
+    assert rc == cli.EXIT_JEV_ERROR
+    err = capsys.readouterr().err
+    assert "TypeSafeAPIConnectionError" in err

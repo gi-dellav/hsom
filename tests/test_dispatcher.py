@@ -1,5 +1,7 @@
 """Planner semantics: none_of_the_above per layer, flags, optional paths, confidence."""
 
+import pytest
+
 from jevdo.dispatcher import plan_from_answers
 from conftest import FakeChoice, FakeNoul, ctx_for
 
@@ -93,3 +95,76 @@ def test_context_from_live_workdir(config, workdir):
                          "README.md", {"README.md": 0.9}, 0.9)})
     out = plan_from_answers(config, ans, live)
     assert out.ok and out.action.paths == {"path": "README.md"}
+
+
+# -- call_system_one retry -------------------------------------------------
+
+from typesafe_sdk import (  # noqa: E402
+    TypeSafeAuthenticationError, TypeSafeInternalServerError,
+)
+
+from jevdo.dispatcher import call_system_one  # noqa: E402
+
+
+def _server_error():
+    import httpx2
+    return TypeSafeInternalServerError(500, None, httpx2.Headers())
+
+
+def test_call_system_one_retries_transient_then_succeeds():
+    calls = {"n": 0}
+
+    class Client:
+        def system_one(self, **kw):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise _server_error()
+            return "ok"
+
+    out = call_system_one(Client(), state={}, questions={}, model="m",
+                          retries=3, retry_base=0.0)
+    assert out == "ok" and calls["n"] == 3
+
+
+def test_call_system_one_reraises_after_exhausting_retries():
+    calls = {"n": 0}
+
+    class Client:
+        def system_one(self, **kw):
+            calls["n"] += 1
+            raise _server_error()
+
+    with pytest.raises(TypeSafeInternalServerError):
+        call_system_one(Client(), state={}, questions={}, model="m",
+                        retries=3, retry_base=0.0)
+    assert calls["n"] == 3
+
+
+def test_call_system_one_retries_disabled_still_tries_once():
+    calls = {"n": 0}
+
+    class Client:
+        def system_one(self, **kw):
+            calls["n"] += 1
+            raise _server_error()
+
+    with pytest.raises(TypeSafeInternalServerError):
+        call_system_one(Client(), state={}, questions={}, model="m",
+                        retries=0, retry_base=0.0)
+    assert calls["n"] == 1
+
+
+def test_call_system_one_does_not_retry_non_transient():
+    import httpx2
+
+    calls = {"n": 0}
+
+    class Client:
+        def system_one(self, **kw):
+            calls["n"] += 1
+            raise TypeSafeAuthenticationError(401, None, httpx2.Headers())
+
+    with pytest.raises(TypeSafeAuthenticationError):
+        call_system_one(Client(), state={}, questions={}, model="m",
+                        retries=3, retry_base=0.0)
+    assert calls["n"] == 1

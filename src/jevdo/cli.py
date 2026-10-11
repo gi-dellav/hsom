@@ -10,6 +10,8 @@ from __future__ import annotations
 import argparse
 import sys
 
+from typesafe_sdk import TypeSafeError
+
 from jevdo.api import apply_provider_overrides
 from jevdo.config import ConfigError, load_config
 from jevdo.dispatcher import (
@@ -24,6 +26,7 @@ EXIT_CONFIG = 2
 EXIT_ABSTAIN = 3
 EXIT_EXEC_FAIL = 4
 EXIT_EVAL_FAIL = 5
+EXIT_JEV_ERROR = 6
 
 
 def apply_cli_overrides(config, args):
@@ -151,8 +154,12 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as e:
             print(f"jevdo: cannot build questions: {e}", file=sys.stderr)
             return EXIT_CONFIG
+        except TypeSafeError as e:
+            print(f"jevdo: Jev error: {type(e).__name__}: {e}", file=sys.stderr)
+            return EXIT_JEV_ERROR
         except Exception as e:
-            print(f"jevdo: Jev call failed: {e}", file=sys.stderr)
+            print(f"jevdo: Jev call failed: {type(e).__name__}: {e}",
+                  file=sys.stderr)
             return EXIT_ABSTAIN
 
         if logger is not None:
@@ -240,8 +247,13 @@ def run_sequence(config, args, budget: int, logger=None) -> int:
         except (ConfigError, ValueError) as e:
             print(f"jevdo: step {i+1}: {e}", file=sys.stderr)
             return EXIT_CONFIG if isinstance(e, ConfigError) else EXIT_ABSTAIN
+        except TypeSafeError as e:
+            print(f"jevdo: Jev error at step {i+1}: {type(e).__name__}: {e}",
+                  file=sys.stderr)
+            return EXIT_JEV_ERROR
         except Exception as e:
-            print(f"jevdo: Jev call failed at step {i+1}: {e}", file=sys.stderr)
+            print(f"jevdo: Jev call failed at step {i+1}: "
+                  f"{type(e).__name__}: {e}", file=sys.stderr)
             return EXIT_ABSTAIN
         if logger is not None:
             logger.log(plan_event(

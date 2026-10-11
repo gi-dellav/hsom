@@ -27,7 +27,13 @@ chains work better than a bare repeat-the-request loop:
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
+
+from typesafe_sdk import (
+    TypeSafeAPIConnectionError, TypeSafeInternalServerError,
+    TypeSafeRateLimitError,
+)
 
 from jevdo.config import (
     RESERVED, EnvConfig, effective_continue_threshold, effective_threshold,
@@ -37,6 +43,17 @@ from jevdo.questions import CONTINUE_QID
 
 PATH_YES = 0.5  # Noul threshold for stated-gates and boolean flags
 CONTINUE_YES = 0.5  # default Noul bar for the `__continue__` gate (see P3)
+
+#: Bounded retries for transient System One API failures (see call_system_one).
+JEV_RETRIES = 3
+JEV_RETRY_BASE = 0.5
+JEV_RETRY_MAX = 8.0
+#: Retryable SDK errors: connection/timeout, 429 rate-limit, 5xx server.
+_RETRYABLE_JEV_ERRORS = (
+    TypeSafeAPIConnectionError,   # includes TypeSafeAPITimeoutError
+    TypeSafeRateLimitError,
+    TypeSafeInternalServerError,
+)
 REPEAT_HINT_STATE = (
     "The previous step already ran this exact command. "
     "Choose a DIFFERENT next step that advances the request, "
@@ -351,6 +368,26 @@ def history_entry(step: int, action: PlannedAction, argv: list[str],
     }
 
 
+def call_system_one(client, *, state, questions, model, extra_body=None,
+                    retries: int | None = None,
+                    retry_base: float | None = None):
+    """Call ``client.system_one`` with bounded exponential backoff.
+
+    Retries transient failures only (connection/timeout, 429, 5xx). The final
+    failure is re-raised unchanged so callers see the real Jev error.
+    """
+    attempts = max(1, JEV_RETRIES if retries is None else retries)
+    base = JEV_RETRY_BASE if retry_base is None else retry_base
+    for attempt in range(attempts):
+        try:
+            return client.system_one(state=state, questions=questions,
+                                     model=model, extra_body=extra_body)
+        except _RETRYABLE_JEV_ERRORS:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(min(base * (2 ** attempt), JEV_RETRY_MAX))
+
+
 def dispatch(config: EnvConfig, request: str, cwd: str = ".", *, client=None,
              min_confidence: float | None = None, history: list | None = None,
              max_steps: int | None = None, max_history: int | None = None,
@@ -401,8 +438,9 @@ def dispatch(config: EnvConfig, request: str, cwd: str = ".", *, client=None,
         client = create_client(config)
         own = True
     try:
-        response = client.system_one(state=state, questions=questions,
-                                     model=config.model, extra_body=extra_body)
+        response = call_system_one(
+            client, state=state, questions=questions, model=config.model,
+            extra_body=extra_body)
     finally:
         if own:
             try:
