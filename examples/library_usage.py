@@ -1,4 +1,4 @@
-"""jevdo as a Python library: plan, dry-run, and execute via Harness.
+"""hsom as a Python library: plan, dry-run, and execute via Harness.
 
 Run with:  PYTHONPATH=src python examples/library_usage.py
 Uses dry_run=True so nothing executes and no API key is needed for the
@@ -11,7 +11,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from jevdo import EnvConfig, Harness  # noqa: E402
+from hsom import EnvConfig, Harness  # noqa: E402
 
 
 def main() -> None:

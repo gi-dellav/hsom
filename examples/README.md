@@ -1,6 +1,6 @@
 # Examples
 
-Two real-world, multi-command jevdo setups. Each example bundles:
+Two real-world, multi-command hsom setups. Each example bundles:
 
 - `environment.toml` — allowlisted commands (provider `openrouter` by default)
 - `eval.toml` — `[[test]]` cases (plans only, never executes)
@@ -14,7 +14,7 @@ Commands: `git` (status / log / diff / add / branch), `ls`, `cp`.
 ```bash
 export OPENROUTER_API_KEY=...   # https://openrouter.ai/settings/keys
 cd examples/git-workflow
-./run_eval.sh                   # jevdo --provider openrouter --env environment.toml --cwd workspace --eval eval.toml --log eval-results.jsonl
+./run_eval.sh                   # hsom --provider openrouter --env environment.toml --cwd workspace --eval eval.toml --log eval-results.jsonl
 ```
 
 64 eval cases: status/log/diff/branch + paraphrases, `--max-count` valued

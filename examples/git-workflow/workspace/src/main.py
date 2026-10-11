@@ -3,7 +3,7 @@ from utils import greet
 
 
 def main() -> None:
-    print(greet("jevdo"))
+    print(greet("hsom"))
 
 
 if __name__ == "__main__":

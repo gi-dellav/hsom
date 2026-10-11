@@ -3,7 +3,7 @@
 #
 # Usage:
 #   export OPENROUTER_API_KEY=...   # from https://openrouter.ai/settings/keys
-#   ./run_eval.sh [extra jevdo args...]
+#   ./run_eval.sh [extra hsom args...]
 #
 # Validates both TOML files load, then runs every [[test]] in eval.toml
 # (plans only — nothing executes) and appends JSONL events to eval-results.jsonl.
@@ -14,7 +14,7 @@ cd "$HERE"
 
 : "${OPENROUTER_API_KEY:?Set OPENROUTER_API_KEY (https://openrouter.ai/settings/keys)}"
 
-jevdo --provider openrouter \
+hsom --provider openrouter \
   --env environment.toml \
   --cwd workspace \
   --eval eval.toml \
