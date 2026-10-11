@@ -1,11 +1,11 @@
 [project]
-name = "jevdo"
+name = "hsom"
 version = "0.1.0"
-description = "Jev, Do. | Connects Jev to your shell"
+description = "Harness for System One Models. | Connects Jev to your shell"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
-authors = [{name = "jevdo contributors"}]
+authors = [{name = "hsom contributors"}]
 keywords = ["jev", "typesafe", "system-one", "shell", "cli", "agent-harness"]
 classifiers = [
   "Development Status :: 4 - Beta",
@@ -27,14 +27,14 @@ dependencies = [
 ]
 
 [project.scripts]
-jevdo = "jevdo.cli:main"
+hsom = "hsom.cli:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/jevdo"]
+packages = ["src/hsom"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

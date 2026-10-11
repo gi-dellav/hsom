@@ -1,8 +1,8 @@
-"""Shared fakes + fixtures for jevdo tests."""
+"""Shared fakes + fixtures for hsom tests."""
 
 import pytest
 
-from jevdo.config import EnvConfig, Command, Subcommand, Flag
+from hsom.config import EnvConfig, Command, Subcommand, Flag
 
 
 class FakeChoice:
@@ -64,6 +64,6 @@ def workdir(tmp_path):
 
 def ctx_for(workdir):
     """Build a context dict compatible with plan_from_answers for workdir."""
-    from jevdo.questions import build_questions
+    from hsom.questions import build_questions
     _q, ctx = build_questions(sample_config(), workdir)
     return ctx

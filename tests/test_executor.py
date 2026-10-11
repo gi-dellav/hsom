@@ -1,7 +1,7 @@
 import pytest
 
-from jevdo.dispatcher import PlannedAction
-from jevdo.executor import ExecutionError, execute, resolve_argv
+from hsom.dispatcher import PlannedAction
+from hsom.executor import ExecutionError, execute, resolve_argv
 
 
 def _action(**kw):
@@ -46,7 +46,7 @@ def test_execute_dry_run_and_real(config, workdir, tmp_path):
 
 
 def test_multipath_and_valued_flag(config, tmp_path):
-    from jevdo.config import Command, Subcommand, Flag, PathSlot
+    from hsom.config import Command, Subcommand, Flag, PathSlot
     cfg_cmd = Command(
         name="cp", description="copy", argv=("cp", "{path:src}", "{path:dst}"),
         paths=(PathSlot(name="src", kind="files"),
@@ -55,7 +55,7 @@ def test_multipath_and_valued_flag(config, tmp_path):
     )
     (tmp_path / "a.txt").write_text("x")
     (tmp_path / "d").mkdir()
-    from jevdo.config import EnvConfig
+    from hsom.config import EnvConfig
     cfg = EnvConfig(commands=(cfg_cmd,))
     a = PlannedAction(command="cp", subcommand=None, paths={"src": "a.txt", "dst": "d"})
     assert resolve_argv(cfg, a, str(tmp_path)) == ["cp", "a.txt", "d"]

@@ -1,7 +1,7 @@
 import pytest
 
-from jevdo.discovery import discover, list_candidates, validate_selection
-from jevdo.config import PathSlot
+from hsom.discovery import discover, list_candidates, validate_selection
+from hsom.config import PathSlot
 
 
 def _tree(root):

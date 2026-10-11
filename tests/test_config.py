@@ -2,7 +2,7 @@ import textwrap
 
 import pytest
 
-from jevdo.config import ConfigError, load_config
+from hsom.config import ConfigError, load_config
 
 
 def _write(tmp_path, body: str) -> str:
@@ -216,7 +216,7 @@ def test_temperature_parsing(tmp_path):
 
 
 def test_continue_threshold_parsing(tmp_path):
-    from jevdo.config import effective_continue_threshold
+    from hsom.config import effective_continue_threshold
     cfg = load_config(_write(tmp_path, BASE))
     assert cfg.continue_threshold == 0.5
     assert cfg.continue_question is None

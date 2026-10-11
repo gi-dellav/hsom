@@ -1,8 +1,8 @@
-# jevdo
+# hsom
 
-*Jev, Do. Allows Jev to operate on a bash shell using decision trees.*
+*Harness for System One Models. Allows Jev to operate on a bash shell using decision trees.*
 
-jevdo is a strict-allowlist harness. `environment.toml` defines which bash commands Jev (the TypeSafe System One classifier) may select. In one step, Jev picks: command → subcommand → flags (boolean or valued) → path slots; this works by navigating the decision tree as defined by the TOML file.
+hsom is a strict-allowlist harness. `environment.toml` defines which bash commands Jev (the TypeSafe System One classifier) may select. In one step, Jev picks: command → subcommand → flags (boolean or valued) → path slots; this works by navigating the decision tree as defined by the TOML file.
 
 - `read` actions run directly.
 - `write` and `destructive` actions ask for confirmation (`y/N`, default N; non-tty declines).
@@ -28,7 +28,7 @@ cp environment.toml.example environment.toml
 
 ### OpenRouter
 
-jevdo can call Jev through [OpenRouter's System One API](https://openrouter.ai/docs/guides/community/typesafe-sdk) (billed to your OpenRouter account) instead of TypeSafe Cloud. Pick one provider:
+hsom can call Jev through [OpenRouter's System One API](https://openrouter.ai/docs/guides/community/typesafe-sdk) (billed to your OpenRouter account) instead of TypeSafe Cloud. Pick one provider:
 
 ```toml
 # environment.toml
@@ -42,7 +42,7 @@ export OPENROUTER_API_KEY=...   # from https://openrouter.ai/settings/keys
 
 Endpoint precedence (highest first): `--base-url` > `[meta] base_url` > `TYPESAFE_BASE_URL` > provider default.
 
-Key precedence: `TYPESAFE_API_KEY` > `OPENROUTER_API_KEY`. The SDK itself reads only `TYPESAFE_API_KEY`, so jevdo forwards `OPENROUTER_API_KEY` explicitly.
+Key precedence: `TYPESAFE_API_KEY` > `OPENROUTER_API_KEY`. The SDK itself reads only `TYPESAFE_API_KEY`, so hsom forwards `OPENROUTER_API_KEY` explicitly.
 
 - `TYPESAFE_BASE_URL=https://openrouter.ai/api` also works and keeps `provider = "typesafe"`.
 - Bare model IDs (`jev-latest`) and prefixed IDs (`typesafe/jev-1.13`) are both passed through.
@@ -129,35 +129,35 @@ Legacy v1 style (`takes_path` / `path_kind` / `path_optional` plus bare `{path}`
 
 ## Usage
 
-Run `jevdo` with a natural-language request:
+Run `hsom` with a natural-language request:
 
 ```bash
-jevdo "show git status" --dry-run --show-probs
-jevdo "brief git history"              # -> git log --oneline
-jevdo "stage readme"                   # -> git add ... (asks [y/N], risk write)
-jevdo "copy readme into docs"          # -> cp README.md docs
-jevdo "run tests" --max-steps 3        # dynamic chaining: Jev decides each step
-jevdo "run tests" --max-steps 1        # single shot (never asks to continue)
-jevdo "run tests" --max-history 2      # send back at most 2 prior steps
-jevdo "run tests" --continue-threshold 0.3  # lower the __continue__ chaining bar (CLI wins)
-jevdo "run tests" --temperature 0.2    # sampling temperature (extra_body)
-jevdo "run tests" --log run.jsonl      # opt-in structured JSONL run log
-jevdo "run tests" --min-confidence 0.8 # CLI flag wins over all config
-jevdo "run tests" --provider openrouter --dry-run  # one-shot OpenRouter routing
-jevdo --eval eval.toml                 # eval harness: plans only, never runs
+hsom "show git status" --dry-run --show-probs
+hsom "brief git history"              # -> git log --oneline
+hsom "stage readme"                   # -> git add ... (asks [y/N], risk write)
+hsom "copy readme into docs"          # -> cp README.md docs
+hsom "run tests" --max-steps 3        # dynamic chaining: Jev decides each step
+hsom "run tests" --max-steps 1        # single shot (never asks to continue)
+hsom "run tests" --max-history 2      # send back at most 2 prior steps
+hsom "run tests" --continue-threshold 0.3  # lower the __continue__ chaining bar (CLI wins)
+hsom "run tests" --temperature 0.2    # sampling temperature (extra_body)
+hsom "run tests" --log run.jsonl      # opt-in structured JSONL run log
+hsom "run tests" --min-confidence 0.8 # CLI flag wins over all config
+hsom "run tests" --provider openrouter --dry-run  # one-shot OpenRouter routing
+hsom --eval eval.toml                 # eval harness: plans only, never runs
 ```
 
 ## Python library
 
-`jevdo` is also an importable library built around the `Harness` class
+`hsom` is also an importable library built around the `Harness` class
 (sync-only). The CLI uses the same machinery.
 
 ```bash
-pip install jevdo
+pip install hsom
 ```
 
 ```python
-from jevdo import Harness
+from hsom import Harness
 
 # Config: environment.toml path, EnvConfig, or TOML-shaped dict.
 h = Harness(env="environment.toml")
@@ -223,7 +223,7 @@ Threshold resolution (highest first): CLI `--min-confidence` > per-node > per-ri
 
 ## Eval mode
 
-`jevdo --eval eval.toml` runs each `[[test]]` input through Jev and compares the planned argv to `expected`. Nothing executes and nothing prompts:
+`hsom --eval eval.toml` runs each `[[test]]` input through Jev and compares the planned argv to `expected`. Nothing executes and nothing prompts:
 
 ```toml
 [[test]]
@@ -260,14 +260,14 @@ Nothing is written without `--log`. The file opens in append mode.
 
 ## Layout
 
-- `src/jevdo/config.py` – toml loading + validation, risk/threshold resolution
-- `src/jevdo/client.py` – provider/base_url/API-key resolution, `TypeSafeClient` factory
-- `src/jevdo/discovery.py` – recursive `discover()` + containment-safe validation
-- `src/jevdo/questions.py` – Jev Choice/Noul builder + custom instructions
-- `src/jevdo/dispatcher.py` – `system_one` call, branch reader, `dispatch_sequence`
-- `src/jevdo/executor.py` – strict multi-slot/`{value}` resolution + `subprocess`
-- `src/jevdo/cli.py` – `jevdo` entrypoint, confirm prompt, step transcript
-- `src/jevdo/api.py` – `Harness`/`RunResult` Python library API (CLI uses it)
-- `src/jevdo/eval.py` – `--eval` toml loading + no-exec comparison harness
-- `src/jevdo/runlog.py` – opt-in JSONL run logging (`--log`)
+- `src/hsom/config.py` – toml loading + validation, risk/threshold resolution
+- `src/hsom/client.py` – provider/base_url/API-key resolution, `TypeSafeClient` factory
+- `src/hsom/discovery.py` – recursive `discover()` + containment-safe validation
+- `src/hsom/questions.py` – Jev Choice/Noul builder + custom instructions
+- `src/hsom/dispatcher.py` – `system_one` call, branch reader, `dispatch_sequence`
+- `src/hsom/executor.py` – strict multi-slot/`{value}` resolution + `subprocess`
+- `src/hsom/cli.py` – `hsom` entrypoint, confirm prompt, step transcript
+- `src/hsom/api.py` – `Harness`/`RunResult` Python library API (CLI uses it)
+- `src/hsom/eval.py` – `--eval` toml loading + no-exec comparison harness
+- `src/hsom/runlog.py` – opt-in JSONL run logging (`--log`)
 - `tests/` – 134 tests (`PYTHONPATH=src:tests pytest`)

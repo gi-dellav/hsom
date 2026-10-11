@@ -1,12 +1,12 @@
-"""High-level Python library API for jevdo.
+"""High-level Python library API for hsom.
 
 The :class:`Harness` class wraps config loading, Jev dispatch, argv
 resolution, execution (with confirmation hook), multi-step chaining and
-eval — the same machinery the ``jevdo`` CLI uses — in an importable,
+eval — the same machinery the ``hsom`` CLI uses — in an importable,
 programmatic form.
 
 Example:
-    from jevdo import Harness
+    from hsom import Harness
 
     h = Harness(env="environment.toml")
     outcome = h.plan("brief git history")
@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from jevdo.config import ConfigError, EnvConfig, PROVIDERS, load_config
+from hsom.config import ConfigError, EnvConfig, PROVIDERS, load_config
 
 #: Confirmation hook: receives the planned action + resolved argv,
 #: returns True to approve execution, False to decline.
@@ -190,7 +190,7 @@ class Harness:
 
     def __enter__(self) -> "Harness":
         if self._client is None and self._owned_client is None:
-            from jevdo.client import create_client
+            from hsom.client import create_client
             try:
                 self._owned_client = create_client(
                     self.config, api_key=self._api_key,
@@ -216,7 +216,7 @@ class Harness:
             return
         if self._api_key is not None and self._api_key.strip():
             return
-        from jevdo.client import has_api_key
+        from hsom.client import has_api_key
         if not has_api_key(self.config):
             raise ConfigError(
                 "no API key found: set TYPESAFE_API_KEY or OPENROUTER_API_KEY")
@@ -234,7 +234,7 @@ class Harness:
                   temperature=None, client=None):
         """Like :meth:`plan` but returns ``(outcome, questions, context,
         response)`` for inspection / logging."""
-        from jevdo.dispatcher import dispatch
+        from hsom.dispatcher import dispatch
         cwd_s = self._resolve_cwd(cwd)
         eff_conf = min_confidence if min_confidence is not None else self._min_confidence
         eff_temp = temperature if temperature is not None else self._temperature
@@ -246,13 +246,13 @@ class Harness:
 
     def resolve(self, action, *, cwd=None) -> list[str]:
         """Build argv for a planned action. Raises ExecutionError."""
-        from jevdo.executor import resolve_argv
+        from hsom.executor import resolve_argv
         return list(resolve_argv(self.config, action, self._resolve_cwd(cwd)))
 
     def execute(self, action, *, cwd=None, dry_run: bool = False,
                 timeout: float | None = None):
         """Execute a planned action. Returns ExecutionResult."""
-        from jevdo.executor import execute
+        from hsom.executor import execute
         return execute(self.config, action, self._resolve_cwd(cwd),
                        dry_run=dry_run,
                        timeout=timeout if timeout is not None else self._timeout)
@@ -290,13 +290,13 @@ class Harness:
           argv verbatim instead of executing a duplicate.
         - ``logger`` / ``log_path``: opt-in JSONL run logging.
         """
-        from jevdo import runlog
-        from jevdo.config import effective_continue_threshold
-        from jevdo.dispatcher import (
+        from hsom import runlog
+        from hsom.config import effective_continue_threshold
+        from hsom.dispatcher import (
             REPEAT_HINT_STATE, continue_info, continue_requested, dispatch,
             history_entry,
         )
-        from jevdo.executor import ExecutionError, resolve_argv
+        from hsom.executor import ExecutionError, resolve_argv
 
         cwd_s = self._resolve_cwd(cwd)
         budget = max_steps if max_steps is not None else self._max_steps
@@ -321,7 +321,7 @@ class Harness:
         if log_path is not None and logger is None:
             logger = own_logger = runlog.JsonlLogger(str(log_path))
         try:
-            from jevdo import executor as _executor
+            from hsom import executor as _executor
 
             steps: list = []
             history: list[dict] = []
@@ -389,7 +389,7 @@ class Harness:
                     outcome, context, response, preview, action = retried
 
                 if dry_run:
-                    from jevdo.dispatcher import StepOutcome
+                    from hsom.dispatcher import StepOutcome
                     steps.append(StepOutcome(action, preview, 0, "", "",
                                              dry_run=True))
                     history.append(history_entry(i + 1, action, preview, 0,
@@ -430,7 +430,7 @@ class Harness:
                                          stop_reason=str(e))
                     argv, rc, out, err = (list(res.argv), res.returncode,
                                           res.stdout, res.stderr)
-                from jevdo.dispatcher import StepOutcome
+                from hsom.dispatcher import StepOutcome
                 steps.append(StepOutcome(action, argv, rc, out, err))
                 history.append(history_entry(i + 1, action, argv, rc, out,
                                              err))
@@ -459,9 +459,9 @@ class Harness:
                             client):
         """Re-plan once with an anti-repeat nudge. Returns
         ``(outcome, context, response, argv, action)`` or None."""
-        from jevdo import runlog
-        from jevdo.dispatcher import REPEAT_HINT_STATE, dispatch
-        from jevdo.executor import resolve_argv
+        from hsom import runlog
+        from hsom.dispatcher import REPEAT_HINT_STATE, dispatch
+        from hsom.executor import resolve_argv
 
         outcome, _q, context, response = dispatch(
             self.config, request, cwd_s, client=client,
@@ -471,7 +471,7 @@ class Harness:
             step_index=step_index, repeat_hint=True,
             hint=REPEAT_HINT_STATE)
         if logger is not None:
-            from jevdo.dispatcher import continue_info
+            from hsom.dispatcher import continue_info
             logger.log(runlog.plan_event(
                 step_index + 1, request, cwd_s, outcome, context,
                 continue_asked=ask_continue,
@@ -496,7 +496,7 @@ class Harness:
 
         Accepts an eval TOML path or a pre-loaded ``list[EvalCase]``.
         """
-        from jevdo.eval import load_eval, run_eval
+        from hsom.eval import load_eval, run_eval
         if isinstance(eval_file_or_cases, (str, os.PathLike)):
             cases = load_eval(str(eval_file_or_cases))
         else:

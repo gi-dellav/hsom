@@ -5,10 +5,10 @@ import types
 import pytest
 
 from conftest import FakeChoice, FakeNoul, sample_config
-from jevdo import Harness, RunResult
-from jevdo.api import apply_provider_overrides
-from jevdo.config import ConfigError, EnvConfig
-from jevdo.dispatcher import PlannedAction
+from hsom import Harness, RunResult
+from hsom.api import apply_provider_overrides
+from hsom.config import ConfigError, EnvConfig
+from hsom.dispatcher import PlannedAction
 
 
 class FakeResp:
@@ -236,13 +236,13 @@ def test_eval_never_executes(workdir, tmp_path, monkeypatch):
 
 def test_eval_accepts_cases_and_multistep(workdir):
     import types
-    from jevdo.eval import EvalCase
+    from hsom.eval import EvalCase
     calls = {"n": 0}
 
     def fake_execute(action, cwd):
         raise AssertionError("must not execute")
 
-    import jevdo.dispatcher as disp
+    import hsom.dispatcher as disp
 
     orig = disp.dispatch
 
@@ -258,12 +258,12 @@ def test_eval_accepts_cases_and_multistep(workdir):
             a = PlannedAction(command="git", subcommand="status",
                               confidence=0.9, risk="read")
             resp = types.SimpleNamespace(answers={})
-        from jevdo.dispatcher import PlanOutcome
+        from hsom.dispatcher import PlanOutcome
         return PlanOutcome(True, a, "ok", 0.9), None, None, resp
 
     disp.dispatch = fake_dispatch
     try:
-        from jevdo import Harness as H2
+        from hsom import Harness as H2
         h = H2(env=sample_config(), cwd=workdir,
                client=_pytest_client())
         case = EvalCase(name="t", input="x",
@@ -277,7 +277,7 @@ def test_eval_accepts_cases_and_multistep(workdir):
 
 
 def test_context_manager_owns_client(monkeypatch):
-    from jevdo import client as client_mod
+    from hsom import client as client_mod
 
     closed = {}
 

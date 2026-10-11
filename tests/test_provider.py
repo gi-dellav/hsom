@@ -4,8 +4,8 @@ import textwrap
 
 import pytest
 
-from jevdo import client as client_mod
-from jevdo.config import ConfigError, OPENROUTER_BASE_URL, load_config
+from hsom import client as client_mod
+from hsom.config import ConfigError, OPENROUTER_BASE_URL, load_config
 from conftest import sample_config
 
 
@@ -118,8 +118,8 @@ def test_create_client_passes_base_url_key_timeout(monkeypatch):
 
 
 def test_dispatch_uses_provider_client(monkeypatch, config, workdir):
-    import jevdo.client as cli_mod
-    import jevdo.dispatcher as disp
+    import hsom.client as cli_mod
+    import hsom.dispatcher as disp
     from conftest import FakeChoice
 
     created = {}
@@ -150,8 +150,8 @@ def test_dispatch_uses_provider_client(monkeypatch, config, workdir):
 
 
 def test_cli_provider_and_base_url_overrides():
-    from jevdo import cli as cli_mod
-    from jevdo.config import EnvConfig
+    from hsom import cli as cli_mod
+    from hsom.config import EnvConfig
 
     cfg = sample_config()
     args = cli_mod.build_parser().parse_args(["x", "--provider", "openrouter"])
@@ -169,8 +169,8 @@ def test_cli_provider_and_base_url_overrides():
 
 
 def test_cli_accepts_openrouter_key(monkeypatch, tmp_path, capsys):
-    from jevdo import cli as cli_mod
-    from jevdo.dispatcher import PlanOutcome, PlannedAction
+    from hsom import cli as cli_mod
+    from hsom.dispatcher import PlanOutcome, PlannedAction
 
     env = _write(tmp_path, '[meta]\nmodel = "jev-latest"\nprovider = "openrouter"\n' + """\
 [[command]]
@@ -181,7 +181,7 @@ argv = ["pytest", "-q"]
     monkeypatch.setenv("OPENROUTER_API_KEY", "ork")
     monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
 
-    import jevdo.dispatcher as disp
+    import hsom.dispatcher as disp
 
     def fake_dispatch(cfg, request, cwd=".", **kw):
         assert cfg.provider == "openrouter"
@@ -196,7 +196,7 @@ argv = ["pytest", "-q"]
 
 
 def test_cli_missing_key_message_names_both(monkeypatch, tmp_path, capsys):
-    from jevdo import cli as cli_mod
+    from hsom import cli as cli_mod
 
     env = _write(tmp_path, '[meta]\nmodel = "jev-latest"\n' + """\
 [[command]]

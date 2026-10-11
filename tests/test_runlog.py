@@ -2,9 +2,9 @@
 
 import json
 
-from jevdo.dispatcher import PlanOutcome, PlannedAction
-from jevdo.eval import EvalCase, EvalTestResult
-from jevdo.runlog import JsonlLogger, eval_event, plan_event, result_event
+from hsom.dispatcher import PlanOutcome, PlannedAction
+from hsom.eval import EvalCase, EvalTestResult
+from hsom.runlog import JsonlLogger, eval_event, plan_event, result_event
 
 
 def test_jsonl_logger_appends_across_instances(tmp_path):

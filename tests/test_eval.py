@@ -4,8 +4,8 @@ import textwrap
 
 import pytest
 
-from jevdo.dispatcher import PlannedAction, PlanOutcome
-from jevdo.eval import EvalCase, EvalError, load_eval, run_eval
+from hsom.dispatcher import PlannedAction, PlanOutcome
+from hsom.eval import EvalCase, EvalError, load_eval, run_eval
 
 
 def _write(tmp_path, body: str, name: str = "eval.toml") -> str:
@@ -147,7 +147,7 @@ def _outcome(action=None, ok=True, reason="ok", conf=0.9):
 
 
 def test_run_eval_pass_fail_abstain(config, workdir, monkeypatch):
-    import jevdo.dispatcher as disp
+    import hsom.dispatcher as disp
 
     def fake_dispatch(cfg, request, cwd=".", **kw):
         if request == "show git status":
@@ -182,13 +182,13 @@ def test_run_eval_never_executes(config, workdir, monkeypatch):
     """Even for a planned action, run_eval must not touch subprocess."""
     import subprocess
 
-    import jevdo.dispatcher as disp
+    import hsom.dispatcher as disp
 
     def boom(*a, **k):
         raise AssertionError("must not execute")
 
     monkeypatch.setattr(subprocess, "run", boom)
-    monkeypatch.setattr("jevdo.executor.execute", boom)
+    monkeypatch.setattr("hsom.executor.execute", boom)
 
     def fake_dispatch(cfg, request, cwd=".", **kw):
         a = PlannedAction(command="pytest", subcommand=None, confidence=0.99, risk="read")
@@ -202,7 +202,7 @@ def test_run_eval_never_executes(config, workdir, monkeypatch):
 
 
 def test_run_eval_refusal_is_failure(config, workdir, monkeypatch):
-    import jevdo.dispatcher as disp
+    import hsom.dispatcher as disp
 
     def fake_dispatch(cfg, request, cwd=".", **kw):
         # hallucinated flag => resolve_argv refuses
@@ -218,7 +218,7 @@ def test_run_eval_refusal_is_failure(config, workdir, monkeypatch):
 
 
 def test_run_eval_per_case_cwd_and_threshold(config, tmp_path, monkeypatch):
-    import jevdo.dispatcher as disp
+    import hsom.dispatcher as disp
 
     seen = {}
 
@@ -238,7 +238,7 @@ def test_run_eval_per_case_cwd_and_threshold(config, tmp_path, monkeypatch):
 
 
 def test_run_eval_forces_max_steps_one(config, tmp_path, monkeypatch):
-    import jevdo.dispatcher as disp
+    import hsom.dispatcher as disp
 
     seen = {}
 
@@ -259,7 +259,7 @@ def test_run_eval_forces_max_steps_one(config, tmp_path, monkeypatch):
 def _multistep_dispatch(monkeypatch, calls, continue_value=0.9):
     import types
 
-    import jevdo.dispatcher as disp
+    import hsom.dispatcher as disp
     from conftest import FakeNoul
 
     def fake_dispatch(cfg, request, cwd=".", **kw):
@@ -313,7 +313,7 @@ def test_run_eval_multistep_never_executes(config, workdir, monkeypatch):
         raise AssertionError("must not execute")
 
     monkeypatch.setattr(subprocess, "run", boom)
-    monkeypatch.setattr("jevdo.executor.execute", boom)
+    monkeypatch.setattr("hsom.executor.execute", boom)
     case = EvalCase(name="t", input="stage then status",
                     expected=(("git", "add", "README.md"), ("git", "status")),
                     expected_str=("git add README.md", "git status"))
@@ -322,7 +322,7 @@ def test_run_eval_multistep_never_executes(config, workdir, monkeypatch):
 
 
 def test_cli_eval_multistep(monkeypatch, tmp_path, capsys):
-    from jevdo import cli
+    from hsom import cli
 
     env = _write(tmp_path, '[meta]\nmodel = "jev-latest"\n' + """\
 [[command]]
@@ -341,7 +341,7 @@ argv = ["pytest", "-q"]
 
     import types
 
-    import jevdo.dispatcher as disp
+    import hsom.dispatcher as disp
     from conftest import FakeNoul
 
     calls = {"n": 0}
@@ -367,7 +367,7 @@ argv = ["pytest", "-q"]
 
 
 def test_cli_eval_mode_exits(monkeypatch, tmp_path, config, capsys):
-    from jevdo import cli
+    from hsom import cli
 
     env = _write(tmp_path, '[meta]\nmodel = "jev-latest"\n' + """\
 [[command]]
@@ -379,7 +379,7 @@ argv = ["pytest", "-q"]
         "git log --oneline", "pytest -q"))
     monkeypatch.setenv("TYPESAFE_API_KEY", "x")
 
-    import jevdo.dispatcher as disp
+    import hsom.dispatcher as disp
 
     def fake_dispatch(cfg, request, cwd=".", **kw):
         a = PlannedAction(command="pytest", subcommand=None, confidence=0.99, risk="read")
@@ -399,7 +399,7 @@ argv = ["pytest", "-q"]
 
 
 def test_cli_eval_never_executes_or_prompts(monkeypatch, tmp_path, capsys):
-    from jevdo import cli
+    from hsom import cli
 
     env = _write(tmp_path, '[meta]\nmodel = "jev-latest"\n' + """\
 [[command]]
@@ -410,7 +410,7 @@ argv = ["pytest", "-q"]
     ev = _write(tmp_path, '[[test]]\ninput = "run tests"\nexpected = "pytest -q"\n')
     monkeypatch.setenv("TYPESAFE_API_KEY", "x")
 
-    import jevdo.dispatcher as disp
+    import hsom.dispatcher as disp
 
     def fake_dispatch(cfg, request, cwd=".", **kw):
         a = PlannedAction(command="pytest", subcommand=None, confidence=0.99,
@@ -418,16 +418,16 @@ argv = ["pytest", "-q"]
         return _outcome(a), None, None, None
 
     monkeypatch.setattr(disp, "dispatch", fake_dispatch)
-    monkeypatch.setattr("jevdo.cli.execute",
+    monkeypatch.setattr("hsom.cli.execute",
                         lambda *a, **k: (_ for _ in ()).throw(AssertionError("no exec")))
-    monkeypatch.setattr("jevdo.cli.confirm",
+    monkeypatch.setattr("hsom.cli.confirm",
                         lambda *a, **k: (_ for _ in ()).throw(AssertionError("no prompt")))
     rc = cli.main(["--env", env, "--cwd", str(tmp_path), "--eval", ev])
     assert rc == cli.EXIT_OK
 
 
 def test_cli_eval_bad_file_is_config_error(monkeypatch, tmp_path, capsys):
-    from jevdo import cli
+    from hsom import cli
 
     env = _write(tmp_path, '[meta]\nmodel = "jev-latest"\n' + """\
 [[command]]

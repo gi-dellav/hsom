@@ -247,8 +247,8 @@ def run_eval(config, cases: list[EvalCase], base_cwd: str = ".", *,
     across steps (e.g. ``["pytest -q", "pytest -q"]``) is accepted as-is;
     the P2 anti-repeat retry only fires on live chained runs.
     """
-    from jevdo.dispatcher import dispatch, dispatch_sequence
-    from jevdo.executor import ExecutionError, resolve_argv
+    from hsom.dispatcher import dispatch, dispatch_sequence
+    from hsom.executor import ExecutionError, resolve_argv
 
     def no_exec(action, cwd):
         return (resolve_argv(config, action, cwd), 0, "", "")

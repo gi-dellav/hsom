@@ -1,4 +1,4 @@
-from jevdo.questions import build_questions
+from hsom.questions import build_questions
 
 
 def test_question_layers(config, workdir):
@@ -27,7 +27,7 @@ def test_empty_candidates_omit_path_question(config, tmp_path):
 
 
 def test_custom_instructions(config, tmp_path):
-    from jevdo.config import Command, EnvConfig, Subcommand
+    from hsom.config import Command, EnvConfig, Subcommand
     cmd = Command(name="git", description="vcs", argv=None,
                   instructions_subcommand="Pick it?",
                   subcommands=(Subcommand(name="status", description="s",
@@ -39,7 +39,7 @@ def test_custom_instructions(config, tmp_path):
 
 
 def test_continue_gate_only_when_allowed(config, workdir):
-    from jevdo.questions import CONTINUE_QID
+    from hsom.questions import CONTINUE_QID
     q, _ = build_questions(config, workdir)
     assert CONTINUE_QID not in q
     q2, _ = build_questions(config, workdir, allow_continue=True)
@@ -48,7 +48,7 @@ def test_continue_gate_only_when_allowed(config, workdir):
 
 def test_step_one_prompts_unchanged(config, workdir):
     """Step 1 (no history) keeps the exact legacy wording (back-compat)."""
-    from jevdo.questions import CONTINUE_INSTRUCTIONS, CONTINUE_QID
+    from hsom.questions import CONTINUE_INSTRUCTIONS, CONTINUE_QID
     q, _ = build_questions(
         config, workdir, allow_continue=True, step_index=0, history=None,
         max_steps=2)
@@ -58,7 +58,7 @@ def test_step_one_prompts_unchanged(config, workdir):
 
 def test_step_two_prompts_name_progress(config, workdir):
     """Step 2+ L1/continue instructions name step, budget, and completed steps."""
-    from jevdo.questions import CONTINUE_QID
+    from hsom.questions import CONTINUE_QID
     hist = [{"step": 1, "node": "git.add", "describe": "git add a",
              "argv": ["git", "add", "a"], "returncode": 0,
              "stdout_tail": "", "stderr_tail": ""}]
@@ -75,7 +75,7 @@ def test_step_two_prompts_name_progress(config, workdir):
 
 
 def test_repeat_hint_appends_nudge(config, workdir):
-    from jevdo.questions import CONTINUE_QID, REPEAT_HINT_INSTRUCTIONS
+    from hsom.questions import CONTINUE_QID, REPEAT_HINT_INSTRUCTIONS
     hist = [{"step": 1, "node": "git.add", "describe": "git add a",
              "argv": ["git", "add", "a"], "returncode": 0,
              "stdout_tail": "", "stderr_tail": ""}]
@@ -89,5 +89,5 @@ def test_continue_question_override(config, workdir, tmp_path):
     import dataclasses
     cfg = dataclasses.replace(config, continue_question="Keep going?")
     q, _ = build_questions(cfg, workdir, allow_continue=True)
-    from jevdo.questions import CONTINUE_QID
+    from hsom.questions import CONTINUE_QID
     assert q[CONTINUE_QID].instructions == "Keep going?"

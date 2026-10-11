@@ -217,5 +217,5 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# jevdo examples: eval run artifacts (regenerate via examples/*/run_eval.sh)
+# hsom examples: eval run artifacts (regenerate via examples/*/run_eval.sh)
 examples/*/eval-results.jsonl

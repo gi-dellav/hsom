@@ -20,8 +20,8 @@ from __future__ import annotations
 
 from typesafe_sdk import Choice, Noul
 
-from jevdo.config import RESERVED, EnvConfig, node_slots
-from jevdo.discovery import discover
+from hsom.config import RESERVED, EnvConfig, node_slots
+from hsom.discovery import discover
 
 NONE_DESC = "none of the above; the request does not match any listed option"
 NONE_PATH_DESC = "none of the listed files/directories matches the request"
@@ -138,7 +138,7 @@ def build_questions(config: EnvConfig, cwd: str = ".", *,
             for slot in node_slots(sub):
                 _add_slot_questions(questions, candidates, key, slot, cwd)
 
-    from jevdo.discovery import list_candidates
+    from hsom.discovery import list_candidates
     files, dirs = [], []
     if candidates:
         try:

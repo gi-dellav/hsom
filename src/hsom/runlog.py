@@ -104,7 +104,7 @@ def result_event(step: int, argv: list[str] | None = None, *,
 
 def eval_event(case, result) -> dict:
     """Build an ``eval`` event from an EvalTestResult."""
-    from jevdo.eval import _join
+    from hsom.eval import _join
 
     def fmt(steps):
         if steps is None:

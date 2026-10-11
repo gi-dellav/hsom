@@ -1,17 +1,17 @@
-"""jevdo — Jev, Do. Connects Jev to your shell via a strict allowlist.
+"""hsom — Jev, Do. Connects Jev to your shell via a strict allowlist.
 
 Python library entry point::
 
-    from jevdo import Harness
+    from hsom import Harness
 
     h = Harness(env="environment.toml")
     result = h.run("brief git history", dry_run=True)
 
-The ``jevdo`` CLI (``jevdo.cli:main``) uses the same machinery.
+The ``hsom`` CLI (``hsom.cli:main``) uses the same machinery.
 """
 
-from jevdo.api import Harness, OnConfirm, RunResult
-from jevdo.config import (
+from hsom.api import Harness, OnConfirm, RunResult
+from hsom.config import (
     Command,
     ConfigError,
     EnvConfig,
@@ -20,9 +20,9 @@ from jevdo.config import (
     Subcommand,
     load_config,
 )
-from jevdo.dispatcher import LayerDetail, PlannedAction, PlanOutcome, StepOutcome
-from jevdo.eval import EvalCase, EvalError, EvalSummary, EvalTestResult, load_eval
-from jevdo.executor import ExecutionError, ExecutionResult
+from hsom.dispatcher import LayerDetail, PlannedAction, PlanOutcome, StepOutcome
+from hsom.eval import EvalCase, EvalError, EvalSummary, EvalTestResult, load_eval
+from hsom.executor import ExecutionError, ExecutionResult
 
 __all__ = [
     "Harness",

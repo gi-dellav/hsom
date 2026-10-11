@@ -1,8 +1,8 @@
-"""CLI: jevdo "<request>" [--env ...] [--dry-run] [--show-probs] [--min-confidence X]
+"""CLI: hsom "<request>" [--env ...] [--dry-run] [--show-probs] [--min-confidence X]
   [--max-steps N] [--max-history N] [--continue-threshold T] [--temperature T]
   [--log PATH] [--provider typesafe|openrouter] [--base-url URL]
 
-Eval mode: jevdo --eval eval.toml [--env ...] [--cwd ...] (never executes; a
+Eval mode: hsom --eval eval.toml [--env ...] [--cwd ...] (never executes; a
 string `expected` runs max_steps = 1, an array runs len(expected) steps)."""
 
 from __future__ import annotations
@@ -12,14 +12,14 @@ import sys
 
 from typesafe_sdk import TypeSafeError
 
-from jevdo.api import apply_provider_overrides
-from jevdo.config import ConfigError, load_config
-from jevdo.dispatcher import (
+from hsom.api import apply_provider_overrides
+from hsom.config import ConfigError, load_config
+from hsom.dispatcher import (
     continue_info, continue_requested, describe_action, dispatch,
 )
-from jevdo.eval import EvalError, _join, load_eval, run_eval
-from jevdo.executor import ExecutionError, execute, resolve_argv
-from jevdo.runlog import JsonlLogger, eval_event, plan_event, result_event
+from hsom.eval import EvalError, _join, load_eval, run_eval
+from hsom.executor import ExecutionError, execute, resolve_argv
+from hsom.runlog import JsonlLogger, eval_event, plan_event, result_event
 
 EXIT_OK = 0
 EXIT_CONFIG = 2
@@ -38,7 +38,7 @@ def apply_cli_overrides(config, args):
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="jevdo",
+        prog="hsom",
         description="Jev, Do. Route a natural-language request to an allowlisted shell command.",
     )
     p.add_argument("request", nargs="?",
@@ -98,34 +98,34 @@ def main(argv: list[str] | None = None) -> int:
     try:
         config = load_config(args.env)
     except ConfigError as e:
-        print(f"jevdo: config error: {e}", file=sys.stderr)
+        print(f"hsom: config error: {e}", file=sys.stderr)
         return EXIT_CONFIG
     if args.min_confidence is not None:
         if not 0 <= args.min_confidence <= 1:
-            print("jevdo: --min-confidence must be in [0, 1]", file=sys.stderr)
+            print("hsom: --min-confidence must be in [0, 1]", file=sys.stderr)
             return EXIT_CONFIG
     if args.max_steps is not None and not 1 <= args.max_steps <= 10:
-        print("jevdo: --max-steps must be in [1, 10]", file=sys.stderr)
+        print("hsom: --max-steps must be in [1, 10]", file=sys.stderr)
         return EXIT_CONFIG
     if args.max_history is not None and args.max_history < 0:
-        print("jevdo: --max-history must be >= 0", file=sys.stderr)
+        print("hsom: --max-history must be >= 0", file=sys.stderr)
         return EXIT_CONFIG
     if args.continue_threshold is not None and not 0 <= args.continue_threshold <= 1:
-        print("jevdo: --continue-threshold must be in [0, 1]", file=sys.stderr)
+        print("hsom: --continue-threshold must be in [0, 1]", file=sys.stderr)
         return EXIT_CONFIG
     if args.temperature is not None and not 0 <= args.temperature <= 2:
-        print("jevdo: --temperature must be in [0, 2]", file=sys.stderr)
+        print("hsom: --temperature must be in [0, 2]", file=sys.stderr)
         return EXIT_CONFIG
     try:
         config = apply_cli_overrides(config, args)
     except ConfigError as e:
-        print(f"jevdo: config error: {e}", file=sys.stderr)
+        print(f"hsom: config error: {e}", file=sys.stderr)
         return EXIT_CONFIG
 
-    from jevdo.client import has_api_key
+    from hsom.client import has_api_key
 
     if not has_api_key(config):
-        print("jevdo: no API key found: set TYPESAFE_API_KEY or OPENROUTER_API_KEY"
+        print("hsom: no API key found: set TYPESAFE_API_KEY or OPENROUTER_API_KEY"
               " (see README for OpenRouter setup)", file=sys.stderr)
         return EXIT_CONFIG
 
@@ -134,7 +134,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.eval_file is not None:
             return run_eval_file(config, args, logger=logger)
         if args.request is None:
-            print("jevdo: the following arguments are required: request",
+            print("hsom: the following arguments are required: request",
                   file=sys.stderr)
             return EXIT_CONFIG
 
@@ -149,16 +149,16 @@ def main(argv: list[str] | None = None) -> int:
                 max_history=args.max_history, max_steps=budget,
                 temperature=args.temperature)
         except ConfigError as e:
-            print(f"jevdo: config error: {e}", file=sys.stderr)
+            print(f"hsom: config error: {e}", file=sys.stderr)
             return EXIT_CONFIG
         except ValueError as e:
-            print(f"jevdo: cannot build questions: {e}", file=sys.stderr)
+            print(f"hsom: cannot build questions: {e}", file=sys.stderr)
             return EXIT_CONFIG
         except TypeSafeError as e:
-            print(f"jevdo: Jev error: {type(e).__name__}: {e}", file=sys.stderr)
+            print(f"hsom: Jev error: {type(e).__name__}: {e}", file=sys.stderr)
             return EXIT_JEV_ERROR
         except Exception as e:
-            print(f"jevdo: Jev call failed: {type(e).__name__}: {e}",
+            print(f"hsom: Jev call failed: {type(e).__name__}: {e}",
                   file=sys.stderr)
             return EXIT_ABSTAIN
 
@@ -170,7 +170,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.show_probs:
             _print_layers(outcome)
         if not outcome.ok or outcome.action is None:
-            print(f"jevdo: abstaining: {outcome.reason} "
+            print(f"hsom: abstaining: {outcome.reason} "
                   f"(confidence {outcome.confidence:.2f})", file=sys.stderr)
             if logger is not None:
                 logger.log(result_event(1, error=outcome.reason,
@@ -186,7 +186,7 @@ def run_action(config, args, action, logger=None, step: int = 1) -> int:
     try:
         preview = resolve_argv(config, action, args.cwd)
     except ExecutionError as e:
-        print(f"jevdo: refused: {e}", file=sys.stderr)
+        print(f"hsom: refused: {e}", file=sys.stderr)
         if logger is not None:
             logger.log(result_event(step, error=str(e)))
         return EXIT_ABSTAIN
@@ -200,7 +200,7 @@ def run_action(config, args, action, logger=None, step: int = 1) -> int:
         print(f"+ {' '.join(preview)}  (confidence {action.confidence:.2f}, "
               f"risk {action.risk})")
         if not confirm(action, preview):
-            print("jevdo: declined by user", file=sys.stderr)
+            print("hsom: declined by user", file=sys.stderr)
             if logger is not None:
                 logger.log(result_event(step, preview, declined=True))
             return EXIT_ABSTAIN
@@ -210,7 +210,7 @@ def run_action(config, args, action, logger=None, step: int = 1) -> int:
     try:
         result = execute(config, action, args.cwd)
     except ExecutionError as e:
-        print(f"jevdo: execution refused/failed: {e}", file=sys.stderr)
+        print(f"hsom: execution refused/failed: {e}", file=sys.stderr)
         if logger is not None:
             logger.log(result_event(step, preview, error=str(e)))
         return EXIT_EXEC_FAIL
@@ -232,7 +232,7 @@ def run_sequence(config, args, budget: int, logger=None) -> int:
     """
     history: list[dict] = []
     final = EXIT_OK
-    from jevdo.config import effective_continue_threshold
+    from hsom.config import effective_continue_threshold
     cont_bar, cont_source = effective_continue_threshold(
         config, cli_override=args.continue_threshold)
     for i in range(budget):
@@ -245,14 +245,14 @@ def run_sequence(config, args, budget: int, logger=None) -> int:
                 allow_continue=ask_continue, temperature=args.temperature,
                 step_index=i)
         except (ConfigError, ValueError) as e:
-            print(f"jevdo: step {i+1}: {e}", file=sys.stderr)
+            print(f"hsom: step {i+1}: {e}", file=sys.stderr)
             return EXIT_CONFIG if isinstance(e, ConfigError) else EXIT_ABSTAIN
         except TypeSafeError as e:
-            print(f"jevdo: Jev error at step {i+1}: {type(e).__name__}: {e}",
+            print(f"hsom: Jev error at step {i+1}: {type(e).__name__}: {e}",
                   file=sys.stderr)
             return EXIT_JEV_ERROR
         except Exception as e:
-            print(f"jevdo: Jev call failed at step {i+1}: "
+            print(f"hsom: Jev call failed at step {i+1}: "
                   f"{type(e).__name__}: {e}", file=sys.stderr)
             return EXIT_ABSTAIN
         if logger is not None:
@@ -269,13 +269,13 @@ def run_sequence(config, args, budget: int, logger=None) -> int:
             _print_layers(outcome)
         if not outcome.ok or outcome.action is None:
             if i == 0:
-                print(f"jevdo: abstaining: {outcome.reason} "
+                print(f"hsom: abstaining: {outcome.reason} "
                       f"(confidence {outcome.confidence:.2f})", file=sys.stderr)
                 if logger is not None:
                     logger.log(result_event(i + 1, error=outcome.reason,
                                             stop_reason=outcome.reason))
                 return EXIT_ABSTAIN
-            print(f"jevdo: stop: {outcome.reason}")
+            print(f"hsom: stop: {outcome.reason}")
             if logger is not None:
                 logger.log(result_event(i + 1, error=outcome.reason,
                                         stop_reason=outcome.reason))
@@ -284,7 +284,7 @@ def run_sequence(config, args, budget: int, logger=None) -> int:
         try:
             preview = resolve_argv(config, action, args.cwd)
         except ExecutionError as e:
-            print(f"jevdo: step {i+1} refused: {e}", file=sys.stderr)
+            print(f"hsom: step {i+1} refused: {e}", file=sys.stderr)
             if logger is not None:
                 logger.log(result_event(i + 1, error=str(e)))
             return EXIT_ABSTAIN
@@ -295,7 +295,7 @@ def run_sequence(config, args, budget: int, logger=None) -> int:
             if logger is not None:
                 logger.log(result_event(i + 1, preview, dry_run=True))
             if ask_continue and not continue_requested(response, cont_bar):
-                print(f"jevdo: done after step {i+1} (dry-run)")
+                print(f"hsom: done after step {i+1} (dry-run)")
                 return EXIT_OK
             history.append({"step": i + 1, "node": action.node_key,
                             "describe": describe_action(action),
@@ -308,7 +308,7 @@ def run_sequence(config, args, budget: int, logger=None) -> int:
                   f"risk {action.risk})")
             confirmed = confirm(action, preview)
             if not confirmed:
-                print("jevdo: declined by user", file=sys.stderr)
+                print("hsom: declined by user", file=sys.stderr)
                 if logger is not None:
                     logger.log(result_event(i + 1, preview, declined=True))
                 return EXIT_ABSTAIN
@@ -317,7 +317,7 @@ def run_sequence(config, args, budget: int, logger=None) -> int:
         try:
             result = execute(config, action, args.cwd)
         except ExecutionError as e:
-            print(f"jevdo: step {i+1} failed: {e}", file=sys.stderr)
+            print(f"hsom: step {i+1} failed: {e}", file=sys.stderr)
             if logger is not None:
                 logger.log(result_event(i + 1, preview, error=str(e)))
             return EXIT_EXEC_FAIL
@@ -336,14 +336,14 @@ def run_sequence(config, args, budget: int, logger=None) -> int:
         if result.returncode != 0:
             final = EXIT_EXEC_FAIL
             if args.stop_on_error:
-                print(f"jevdo: stop: step {i+1} exited {result.returncode}")
+                print(f"hsom: stop: step {i+1} exited {result.returncode}")
                 return final
         if ask_continue and not continue_requested(response, cont_bar):
-            print(f"jevdo: done after step {i+1}")
+            print(f"hsom: done after step {i+1}")
             return final
     if args.dry_run:
         return EXIT_OK
-    print("jevdo: max_steps reached" if len(history) == budget else "jevdo: done")
+    print("hsom: max_steps reached" if len(history) == budget else "hsom: done")
     return final
 
 
@@ -352,7 +352,7 @@ def run_eval_file(config, args, logger=None) -> int:
     try:
         cases = load_eval(args.eval_file)
     except EvalError as e:
-        print(f"jevdo: eval error: {e}", file=sys.stderr)
+        print(f"hsom: eval error: {e}", file=sys.stderr)
         return EXIT_CONFIG
     summary = run_eval(config, cases, args.cwd, min_confidence=args.min_confidence,
                        temperature=args.temperature,
@@ -369,7 +369,7 @@ def run_eval_file(config, args, logger=None) -> int:
                   f"  (confidence {r.confidence:.2f}"
                   + (f", risk {r.risk}" if r.risk else "") + ")"
                   + ("" if r.passed else f" -- {r.reason}"))
-    print(f"jevdo: eval {summary.passed}/{summary.total} passed")
+    print(f"hsom: eval {summary.passed}/{summary.total} passed")
     return EXIT_OK if summary.ok else EXIT_EVAL_FAIL
 
 

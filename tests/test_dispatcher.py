@@ -2,7 +2,7 @@
 
 import pytest
 
-from jevdo.dispatcher import plan_from_answers
+from hsom.dispatcher import plan_from_answers
 from conftest import FakeChoice, FakeNoul, ctx_for
 
 CTX = {
@@ -103,7 +103,7 @@ from typesafe_sdk import (  # noqa: E402
     TypeSafeAuthenticationError, TypeSafeInternalServerError,
 )
 
-from jevdo.dispatcher import call_system_one  # noqa: E402
+from hsom.dispatcher import call_system_one  # noqa: E402
 
 
 def _server_error():

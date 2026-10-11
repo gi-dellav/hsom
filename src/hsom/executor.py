@@ -6,9 +6,9 @@ import re
 import subprocess
 from dataclasses import dataclass
 
-from jevdo.config import EnvConfig, node_for_selection, node_slots
-from jevdo.discovery import validate_selection
-from jevdo.dispatcher import PlannedAction
+from hsom.config import EnvConfig, node_for_selection, node_slots
+from hsom.discovery import validate_selection
+from hsom.dispatcher import PlannedAction
 
 PATH_SLOT_RE = re.compile(r"\{path(?::([a-z0-9_-]+))?\}")
 VALUE_PH = "{value}"

@@ -35,11 +35,11 @@ from typesafe_sdk import (
     TypeSafeRateLimitError,
 )
 
-from jevdo.config import (
+from hsom.config import (
     RESERVED, EnvConfig, effective_continue_threshold, effective_threshold,
     node_for_selection, node_risk, node_slots,
 )
-from jevdo.questions import CONTINUE_QID
+from hsom.questions import CONTINUE_QID
 
 PATH_YES = 0.5  # Noul threshold for stated-gates and boolean flags
 CONTINUE_YES = 0.5  # default Noul bar for the `__continue__` gate (see P3)
@@ -406,9 +406,9 @@ def dispatch(config: EnvConfig, request: str, cwd: str = ".", *, client=None,
     step number, completed steps, and remaining budget. `hint` (P2 retry)
     is surfaced to Jev as `state["hint"]`.
     """
-    from jevdo.client import create_client
+    from hsom.client import create_client
 
-    from jevdo.questions import build_questions, state_preview
+    from hsom.questions import build_questions, state_preview
 
     budget = config.max_steps if max_steps is None else max_steps
     if allow_continue is None:
@@ -477,10 +477,10 @@ def dispatch_sequence(config: EnvConfig, request: str, cwd: str = ".", *,
 
     Returns (steps, stop_reason) where steps is a list[StepOutcome].
     execute_fn(action, cwd) -> (argv, returncode, stdout, stderr); defaults to
-    jevdo.executor.execute (real run). stop_on_error defaults True.
+    hsom.executor.execute (real run). stop_on_error defaults True.
     logger, when given, is a runlog.JsonlLogger receiving plan/result events.
     """
-    from jevdo import executor as _executor
+    from hsom import executor as _executor
 
     budget = max_steps or config.max_steps
     budget = max(1, min(10, budget))
@@ -490,7 +490,7 @@ def dispatch_sequence(config: EnvConfig, request: str, cwd: str = ".", *,
     history: list[dict] = []
     own = False
     if client is None and execute_fn is None:
-        from jevdo.client import create_client
+        from hsom.client import create_client
         client = create_client(config)
         own = True
     try:
@@ -503,7 +503,7 @@ def dispatch_sequence(config: EnvConfig, request: str, cwd: str = ".", *,
                 allow_continue=ask_continue, temperature=temperature,
                 step_index=i)
             if logger is not None:
-                from jevdo import runlog
+                from hsom import runlog
                 logger.log(runlog.plan_event(
                     i + 1, request, cwd, outcome, context,
                     continue_asked=ask_continue,
@@ -598,7 +598,7 @@ def _retry_after_repeat(config, request, cwd, *, client,
     instead of executing a duplicate). The retry is executed through the
     same path as a normal step (execute_fn or real executor).
     """
-    from jevdo import executor as _executor
+    from hsom import executor as _executor
 
     outcome, _q, context, response = dispatch(
         config, request, cwd, client=client,
@@ -607,7 +607,7 @@ def _retry_after_repeat(config, request, cwd, *, client,
         allow_continue=ask_continue, temperature=temperature,
         step_index=step_index, repeat_hint=True, hint=REPEAT_HINT_STATE)
     if logger is not None:
-        from jevdo import runlog
+        from hsom import runlog
         logger.log(runlog.plan_event(
             step_index + 1, request, cwd, outcome, context,
             continue_asked=ask_continue,
@@ -642,7 +642,7 @@ def _force_node(outcome: PlanOutcome, command: str, subcommand: str | None):
 
 
 def _outcome_with_action(config, outcome: PlanOutcome, action, min_confidence):
-    from jevdo.config import node_for_selection, node_risk, effective_threshold
+    from hsom.config import node_for_selection, node_risk, effective_threshold
     try:
         cmd, sub = node_for_selection(config, action.command, action.subcommand)
     except Exception as e:

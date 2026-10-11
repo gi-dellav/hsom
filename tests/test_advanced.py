@@ -2,11 +2,11 @@
 
 import pytest
 
-from jevdo.config import (
+from hsom.config import (
     Command, EnvConfig, Flag, PathSlot, Subcommand,
     effective_threshold, node_risk,
 )
-from jevdo.dispatcher import (
+from hsom.dispatcher import (
     PlannedAction, _clip_history, continue_requested, dispatch,
     dispatch_sequence, plan_from_answers,
 )
@@ -102,7 +102,7 @@ def test_valued_flag_none_means_off(rich):
 
 
 def test_confirm_accept_decline(monkeypatch):
-    from jevdo import cli
+    from hsom import cli
     import sys
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
@@ -243,7 +243,7 @@ def test_continue_requested_honors_threshold():
 
 
 def test_history_entry_carries_node_and_describe():
-    from jevdo.dispatcher import history_entry
+    from hsom.dispatcher import history_entry
     a = PlannedAction(command="ruff", subcommand="check",
                       paths={"target": "src/app.py"},
                       confidence=0.9, risk="read")
@@ -282,7 +282,7 @@ def test_repeat_guard_retries_once_then_stops(config, tmp_path):
     stops honestly without executing a duplicate."""
     import types
 
-    from jevdo.dispatcher import PlanOutcome
+    from hsom.dispatcher import PlanOutcome
 
     plans = iter([
         ("pytest", None, 0.9),   # step 1
@@ -346,7 +346,7 @@ def test_repeat_guard_accepts_redirected_retry(config, tmp_path):
         return (argv, 0, "ok", "")
 
     import dataclasses
-    from jevdo.config import Command, Subcommand
+    from hsom.config import Command, Subcommand
     cfg = EnvConfig(
         model="jev-latest", min_confidence=0.5, timeout=60.0,
         commands=(
@@ -391,14 +391,14 @@ def test_dispatch_clips_history_and_asks_continue(config, tmp_path):
 
 
 def _cli_args(*argv):
-    from jevdo import cli
+    from hsom import cli
     return cli.build_parser().parse_args(list(argv))
 
 
 def test_cli_run_sequence_stops_when_jev_declines(monkeypatch, config):
-    from jevdo import cli
-    from jevdo.dispatcher import PlanOutcome
-    from jevdo.executor import ExecutionResult
+    from hsom import cli
+    from hsom.dispatcher import PlanOutcome
+    from hsom.executor import ExecutionResult
 
     calls = {"n": 0}
     answers = iter([True, False])
@@ -423,9 +423,9 @@ def test_cli_run_sequence_stops_when_jev_declines(monkeypatch, config):
 
 
 def test_cli_max_steps_one_never_asks_continue(monkeypatch, config):
-    from jevdo import cli
-    from jevdo.dispatcher import PlanOutcome
-    from jevdo.executor import ExecutionResult
+    from hsom import cli
+    from hsom.dispatcher import PlanOutcome
+    from hsom.executor import ExecutionResult
 
     def fake_dispatch(cfg, request, cwd=".", **kw):
         a = PlannedAction(command="pytest", subcommand=None, confidence=0.9,
@@ -473,7 +473,7 @@ def test_dispatch_passes_temperature(config, tmp_path):
 def test_sequence_logs_plan_and_result(tmp_path):
     import json
 
-    from jevdo.runlog import JsonlLogger
+    from hsom.runlog import JsonlLogger
 
     cfg = sample_config()
 
@@ -505,9 +505,9 @@ def test_sequence_logs_plan_and_result(tmp_path):
 def test_cli_single_run_writes_jsonl_log(monkeypatch, tmp_path):
     import json
 
-    from jevdo import cli
-    from jevdo.dispatcher import PlanOutcome
-    from jevdo.executor import ExecutionResult
+    from hsom import cli
+    from hsom.dispatcher import PlanOutcome
+    from hsom.executor import ExecutionResult
 
     env = tmp_path / "environment.toml"
     env.write_text('[meta]\nmodel = "jev-latest"\n' + """\
@@ -539,9 +539,9 @@ argv = ["pytest", "-q"]
 
 
 def test_cli_temperature_flag_passed(monkeypatch, tmp_path):
-    from jevdo import cli
-    from jevdo.dispatcher import PlanOutcome
-    from jevdo.executor import ExecutionResult
+    from hsom import cli
+    from hsom.dispatcher import PlanOutcome
+    from hsom.executor import ExecutionResult
 
     env = tmp_path / "environment.toml"
     env.write_text('[meta]\nmodel = "jev-latest"\n' + """\
@@ -584,7 +584,7 @@ def test_cli_surfaces_jev_error_as_distinct_exit(monkeypatch, tmp_path):
     import httpx2
     from typesafe_sdk import TypeSafeInternalServerError
 
-    from jevdo import cli
+    from hsom import cli
 
     monkeypatch.setenv("TYPESAFE_API_KEY", "x")
 
@@ -601,8 +601,8 @@ def test_cli_sequence_surfaces_jev_error_as_distinct_exit(monkeypatch, tmp_path,
     import httpx2
     from typesafe_sdk import TypeSafeAPIConnectionError
 
-    from jevdo import cli
-    from jevdo.config import load_config
+    from hsom import cli
+    from hsom.config import load_config
 
     monkeypatch.setenv("TYPESAFE_API_KEY", "x")
     cfg = load_config(_write_env(tmp_path))
