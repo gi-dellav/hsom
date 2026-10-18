@@ -428,7 +428,7 @@ def dispatch(config: EnvConfig, request: str, cwd: str = ".", *, client=None,
         config, cwd, allow_continue=allow_continue,
         step_index=step_index, history=hist or None,
         max_steps=budget, repeat_hint=repeat_hint)
-    state = {
+    state: dict[str, object] = {
         "request": request,
         "cwd_files": state_preview(context["cwd_files"]),
         "cwd_dirs": state_preview(context["cwd_dirs"]),

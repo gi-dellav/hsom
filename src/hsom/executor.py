@@ -115,8 +115,8 @@ def resolve_argv(config: EnvConfig, action: PlannedAction, cwd: str = ".") -> li
     for name in paths:
         if name not in slots:
             raise ExecutionError(f"unknown path slot '{name}' for '{action.node_key}'")
-    for name, slot in slots.items():
-        if name not in paths and not slot.optional:
+    for name, candidate in slots.items():
+        if name not in paths and not candidate.optional:
             # required slot missing: only ok if template has no ref (misconfig caught at load)
             required_refs = {
                 m.group(1) or "path"
