@@ -26,10 +26,12 @@ def test_plan_event_fields():
                     continue_asked=True, continue_value=0.8,
                     continue_threshold=0.4,
                     continue_threshold_source="meta continue_threshold",
-                    max_steps=3, max_history=2, history_len=0)
+                    max_steps=3, max_history=2, history_len=0,
+                    temperature=0.0)
     assert ev["type"] == "plan"
     assert ev["command"] == "git" and ev["subcommand"] == "status"
     assert ev["continue_asked"] is True and ev["continue"] == 0.8
+    assert ev["temperature"] == 0.0
     assert ev["continue_threshold"] == 0.4
     assert ev["continue_threshold_source"] == "meta continue_threshold"
     assert ev["cwd_files"] == ["a"] and ev["cwd_dirs"] == ["d"]
@@ -50,7 +52,8 @@ def test_eval_event_fields():
                     expected_str=("git status",))
     result = EvalTestResult(case, True, (("git", "status"),), "ok",
                             confidence=0.9, risk="read")
-    ev = eval_event(case, result)
+    ev = eval_event(case, result, temperature=0.0)
     assert ev["type"] == "eval" and ev["name"] == "t"
     assert ev["expected"] == "git status" and ev["actual"] == "git status"
     assert ev["passed"] is True and ev["steps"] == 1
+    assert ev["temperature"] == 0.0

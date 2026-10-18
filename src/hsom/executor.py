@@ -89,6 +89,11 @@ def resolve_argv(config: EnvConfig, action: PlannedAction, cwd: str = ".") -> li
             if slot.optional:
                 continue  # drop token
             raise ExecutionError(f"missing required path for '{action.node_key}.{slot_name}'")
+        if val.startswith("-"):
+            # Defense in depth: discovery/validation already reject these,
+            # but never let a path value reach argv as an option.
+            raise ExecutionError(
+                f"path selection may not start with '-': {val!r}")
         try:
             validate_selection(val, slot, cwd)
         except ValueError as e:

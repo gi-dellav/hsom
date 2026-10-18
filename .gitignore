@@ -219,3 +219,5 @@ __marimo__/
 
 # hsom examples: eval run artifacts (regenerate via examples/*/run_eval.sh)
 examples/*/eval-results.jsonl
+
+PLAN*.md

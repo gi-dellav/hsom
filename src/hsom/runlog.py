@@ -54,7 +54,8 @@ def plan_event(step: int, request: str, cwd: str, outcome, context=None, *,
                continue_threshold: float | None = None,
                continue_threshold_source: str | None = None,
                max_steps: int | None = None, max_history: int | None = None,
-               history_len: int = 0, repeat_retry: bool = False) -> dict:
+               history_len: int = 0, repeat_retry: bool = False,
+               temperature: float | None = None) -> dict:
     """Build a ``plan`` event from a PlanOutcome."""
     ev = {
         "type": "plan",
@@ -65,6 +66,7 @@ def plan_event(step: int, request: str, cwd: str, outcome, context=None, *,
         "ok": outcome.ok,
         "reason": outcome.reason,
         "confidence": outcome.confidence,
+        "temperature": temperature,
         "continue_asked": continue_asked,
         "continue": continue_value,
         "continue_threshold": continue_threshold,
@@ -102,7 +104,7 @@ def result_event(step: int, argv: list[str] | None = None, *,
     }
 
 
-def eval_event(case, result) -> dict:
+def eval_event(case, result, *, temperature: float | None = None) -> dict:
     """Build an ``eval`` event from an EvalTestResult."""
     from hsom.eval import _join
 
@@ -123,6 +125,7 @@ def eval_event(case, result) -> dict:
         "confidence": result.confidence,
         "risk": result.risk,
         "steps": len(result.actual) if result.actual is not None else 0,
+        "temperature": temperature,
     }
 
 

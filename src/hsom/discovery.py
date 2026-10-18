@@ -4,6 +4,11 @@
 - discover(slot, cwd): recursive walk honoring base/depth/glob/dotfiles/cap.
   Returns sorted relative posix subpaths.
 - validate_selection(name, kind_or_slot, cwd): fail-closed revalidation.
+
+Candidates whose names start with "-" or contain non-printable characters
+(control characters, newlines, escape sequences) are never listed: the former
+would be parsed as an option, the latter can corrupt prompts or terminal
+output.
 """
 
 from __future__ import annotations
@@ -24,7 +29,8 @@ def list_candidates(kind: str, cwd: str = ".") -> list[str]:
     with os.scandir(cwd) as it:
         for entry in it:
             name = entry.name
-            if name.startswith(".") or name.startswith("-"):
+            if (name.startswith(".") or name.startswith("-")
+                    or not name.isprintable()):
                 continue
             try:
                 if entry.is_dir(follow_symlinks=False):
@@ -80,6 +86,10 @@ def discover(slot, cwd: str = ".") -> list[str]:
                 # A token starting with '-' would be parsed as an option by
                 # the executed command, bypassing the argv allowlist.
                 continue
+            if not name.isprintable():
+                # Control characters/newlines can corrupt the Jev prompt or
+                # terminal output; never offer such names as candidates.
+                continue
             if not include_dotfiles and (name.startswith(".") or _has_dot_segment(rel)):
                 continue
             try:
@@ -121,7 +131,7 @@ def validate_selection(name: str, kind_or_slot, cwd: str = ".") -> str:
     """
     if not name or not isinstance(name, str):
         raise ValueError("empty path selection")
-    if "\0" in name or "\n" in name:
+    if not name.isprintable():
         raise ValueError(f"invalid path selection: {name!r}")
     if os.path.isabs(name):
         raise ValueError(f"absolute paths not allowed: {name!r}")

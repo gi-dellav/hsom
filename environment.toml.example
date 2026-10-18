@@ -13,7 +13,7 @@ max_steps = 1
 # max_history = 5          # cap history entries sent to Jev when chaining (0 = none)
 # continue_threshold = 0.5 # Noul bar for the __continue__ chaining gate (0..1)
 # continue_question = "..."  # override the __continue__ gate instructions
-# temperature = 0.0        # sampling temperature passed in extra_body
+# temperature = 0.0        # sampling temperature passed in extra_body (provider-dependent)
 command_question = "What shell task is the user asking for?"
   [meta.risk_thresholds]
   read = 0.5
@@ -110,8 +110,8 @@ risk = "write"
 name = "pytest"
 description = "run the python test suite, e.g. 'run tests'"
 argv = ["pytest", "-q"]
-risk = "read"
-min_confidence = 0.6
+# Tests import and execute user-controlled code, so this is not read-only.
+risk = "write"
 
   [[command.flag]]
   name = "-x"

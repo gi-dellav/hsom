@@ -167,7 +167,9 @@ def main(argv: list[str] | None = None) -> int:
             logger.log(plan_event(
                 1, args.request, args.cwd, outcome, context,
                 continue_asked=False, continue_value=None,
-                max_steps=budget, max_history=args.max_history))
+                max_steps=budget, max_history=args.max_history,
+                temperature=(args.temperature if args.temperature is not None
+                             else config.temperature)))
         if args.show_probs:
             _print_layers(outcome)
         if not outcome.ok or outcome.action is None:
@@ -236,6 +238,7 @@ def run_sequence(config, args, budget: int, logger=None) -> int:
     from hsom.config import effective_continue_threshold
     cont_bar, cont_source = effective_continue_threshold(
         config, cli_override=args.continue_threshold)
+    temp = config.temperature if args.temperature is None else args.temperature
     for i in range(budget):
         ask_continue = budget > 1 and i + 1 < budget
         try:
@@ -243,7 +246,7 @@ def run_sequence(config, args, budget: int, logger=None) -> int:
                 config, args.request, args.cwd,
                 min_confidence=args.min_confidence, history=history or None,
                 max_steps=budget, max_history=args.max_history,
-                allow_continue=ask_continue, temperature=args.temperature,
+                allow_continue=ask_continue, temperature=temp,
                 step_index=i)
         except (ConfigError, ValueError) as e:
             print(f"hsom: step {i+1}: {e}", file=sys.stderr)
@@ -264,7 +267,7 @@ def run_sequence(config, args, budget: int, logger=None) -> int:
                 continue_threshold=cont_bar,
                 continue_threshold_source=cont_source,
                 max_steps=budget, max_history=args.max_history,
-                history_len=len(history)))
+                history_len=len(history), temperature=temp))
         if args.show_probs:
             print(f"# step {i+1}/{budget}:")
             _print_layers(outcome)
@@ -294,7 +297,7 @@ def run_sequence(config, args, budget: int, logger=None) -> int:
                 config, args.request, args.cwd, client=None,
                 min_confidence=args.min_confidence, history=history,
                 max_steps=budget, max_history=args.max_history,
-                temperature=args.temperature, step_index=i,
+                temperature=temp, step_index=i,
                 ask_continue=ask_continue, prev_argv=preview, logger=logger,
                 continue_threshold=cont_bar,
                 continue_threshold_source=cont_source)
@@ -379,9 +382,10 @@ def run_eval_file(config, args, logger=None) -> int:
     summary = run_eval(config, cases, args.cwd, min_confidence=args.min_confidence,
                        temperature=args.temperature,
                        continue_threshold=args.continue_threshold)
+    temp = args.temperature if args.temperature is not None else config.temperature
     for r in summary.results:
         if logger is not None:
-            logger.log(eval_event(r.case, r))
+            logger.log(eval_event(r.case, r, temperature=temp))
         status = "PASS" if r.passed else "FAIL"
         if r.actual is None:
             print(f"{status} {r.case.name}: {r.reason}")

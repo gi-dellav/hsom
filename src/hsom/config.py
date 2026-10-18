@@ -13,7 +13,7 @@ base_url = "https://..."    # optional override; wins over provider default and
 default_risk = "read"       # read | write | destructive
 max_steps = 1               # 1..10 upper bound; >1 lets Jev decide to continue
 max_history = 5             # optional; cap history entries sent back to Jev
-temperature = 0.0           # optional; passed to Jev via extra_body
+temperature = 0.0           # optional; extra_body passthrough (provider-dependent)
 command_question = "..."    # optional override for the L1 question text
 continue_threshold = 0.5    # optional; Noul bar for the `__continue__` gate (0..1)
 continue_question = "..."   # optional override for the `__continue__` instructions
@@ -26,7 +26,8 @@ continue_question = "..."   # optional override for the `__continue__` instructi
 name = "git"
 description = "version control operations"
 risk = "read"               # optional; inherits meta.default_risk, subs inherit cmd
-min_confidence = 0.6        # optional per-node override
+min_confidence = 0.6        # optional per-node override; the risk tier is a
+                            # floor, so this can only make the bar stricter
 argv = [...]                # leaf: required; parent: optional base fallback
 instructions_subcommand = "..."  # optional L2 question override for this command
 
@@ -366,8 +367,9 @@ def _parse_path_slot(d: dict, ctx: str) -> PathSlot:
             raise ConfigError(f"{sctx}: 'description' must be a non-empty string")
         desc = desc_raw.strip()
     base = d.get("base", ".")
-    if not isinstance(base, str) or not base or base.startswith("/") or "\0" in base:
-        raise ConfigError(f"{sctx}: 'base' must be a relative path")
+    if (not isinstance(base, str) or not base or base.startswith("/")
+            or not base.isprintable()):
+        raise ConfigError(f"{sctx}: 'base' must be a printable relative path")
     # normalize: reject .. escapes at load
     parts = [p for p in base.replace("\\", "/").split("/") if p not in ("", ".")]
     if any(p == ".." for p in parts):
@@ -704,15 +706,23 @@ def effective_continue_threshold(config: EnvConfig,
 
 def effective_threshold(config: EnvConfig, cmd: Command, sub: Subcommand | None,
                         risk: str, *, cli_override: float | None = None) -> tuple[float, str]:
-    """Threshold resolution: CLI > node > risk tier > global. Returns (bar, source)."""
+    """Threshold resolution: CLI > max(node, risk tier) > global.
+
+    The risk tier is a floor: a per-node ``min_confidence`` may make the bar
+    stricter, but cannot weaken the tier (so read < write < destructive
+    strictness is preserved). An explicit CLI override wins outright.
+    Returns (bar, source).
+    """
     if cli_override is not None:
         return cli_override, "cli --min-confidence"
     node_bar = sub.min_confidence if sub is not None else cmd.min_confidence
     if sub is not None and sub.min_confidence is None:
         node_bar = cmd.min_confidence  # fall back to parent for sub nodes
-    if node_bar is not None:
+    if risk in config.risk_thresholds:
+        tier_bar, tier_source = config.risk_thresholds[risk], f"risk {risk}"
+    else:
+        tier_bar, tier_source = config.min_confidence, "global"
+    if node_bar is not None and node_bar > tier_bar:
         who = f"{cmd.name}.{sub.name}" if sub is not None else cmd.name
         return node_bar, f"node {who}"
-    if risk in config.risk_thresholds:
-        return config.risk_thresholds[risk], f"risk {risk}"
-    return config.min_confidence, "global"
+    return tier_bar, tier_source

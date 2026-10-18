@@ -71,6 +71,48 @@ def test_risk_inheritance_and_threshold_resolution():
     assert effective_threshold(cfg4, cmds[0], add, "write", cli_override=0.1) == (0.1, "cli --min-confidence")
 
 
+def test_node_threshold_cannot_weaken_risk_tier():
+    add = Subcommand(name="add", description="stage",
+                     argv=("git", "add", "{path:src}"),
+                     paths=(PathSlot(name="src", kind="files"),),
+                     risk="write", min_confidence=0.6)
+    cfg = EnvConfig(
+        commands=(Command(name="git", description="vcs", argv=None,
+                          subcommands=(add,)),),
+        risk_thresholds={"read": 0.5, "write": 0.7, "destructive": 0.9},
+    )
+    git = cfg.get_command("git")
+    # 0.6 < write tier 0.7 => tier wins (nesting invariant holds)
+    assert effective_threshold(cfg, git, add, "write") == (0.7, "risk write")
+
+    stricter = Subcommand(name="add", description="stage",
+                          argv=("git", "add", "{path:src}"),
+                          paths=(PathSlot(name="src", kind="files"),),
+                          risk="write", min_confidence=0.8)
+    cfg2 = EnvConfig(
+        commands=(Command(name="git", description="vcs", argv=None,
+                          subcommands=(stricter,)),),
+        risk_thresholds={"read": 0.5, "write": 0.7, "destructive": 0.9},
+    )
+    # 0.8 > tier 0.7 => node wins, still stricter than the tier
+    assert effective_threshold(cfg2, cfg2.get_command("git"), stricter,
+                               "write") == (0.8, "node git.add")
+
+    # Parent overrides inherit to subcommands and obey the same floor.
+    parent = Command(name="git", description="vcs",
+                     argv=("git",),
+                     min_confidence=0.6,
+                     subcommands=(Subcommand(name="add", description="stage",
+                                             argv=("git", "add"),
+                                             risk="write"),))
+    cfg3 = EnvConfig(
+        commands=(parent,),
+        risk_thresholds={"read": 0.5, "write": 0.7, "destructive": 0.9},
+    )
+    assert effective_threshold(cfg3, parent, parent.subcommands[0],
+                               "write") == (0.7, "risk write")
+
+
 def test_write_below_risk_threshold_abstains(rich):
     ans = (_cmd("git", 0.6)
            | {"__subcommand__:git": FakeChoice("add", {"add": 0.9}, 0.6),

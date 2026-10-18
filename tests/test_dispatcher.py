@@ -80,6 +80,30 @@ def test_optional_path_omitted_when_not_stated(config):
     assert out.ok and out.action.describe() == "ls -la"
 
 
+def test_required_path_missing_answer_abstains(config):
+    ans = (_cmd() | {"__subcommand__:git": FakeChoice("add", {"add": 0.9}, 0.9)})
+    out = plan_from_answers(config, ans, CTX)
+    assert not out.ok and out.action is None
+    assert "missing path for 'git.add.path'" in out.reason
+
+
+def test_optional_path_missing_gate_omits_slot(config):
+    ans = ({"__command__": FakeChoice("ls", {"ls": 0.9}, 0.9)}
+           | {"path.ls.path": FakeChoice("srcdir", {"srcdir": 0.9}, 0.9)})
+    out = plan_from_answers(config, ans, CTX)
+    assert out.ok, out.reason
+    assert out.action.path is None and out.action.paths == {}
+
+
+def test_optional_path_malformed_gate_omits_slot(config):
+    ans = ({"__command__": FakeChoice("ls", {"ls": 0.9}, 0.9)}
+           | {"path_stated.ls.path": FakeNoul("not-a-number"),
+              "path.ls.path": FakeChoice("srcdir", {"srcdir": 0.9}, 0.9)})
+    out = plan_from_answers(config, ans, CTX)
+    assert out.ok, out.reason
+    assert out.action.path is None and out.action.paths == {}
+
+
 def test_optional_path_used_when_stated(config):
     ans = ({"__command__": FakeChoice("ls", {"ls": 0.9}, 0.9)}
            | {"path_stated.ls.path": FakeNoul(0.9),

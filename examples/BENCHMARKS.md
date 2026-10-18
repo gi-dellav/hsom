@@ -166,8 +166,10 @@ expectations):
   default): when step 2+ resolves to the previous step's argv, the harness
   re-plans once with an anti-repeat nudge (`state["hint"]` +
   `REPEAT_HINT_INSTRUCTIONS`) instead of executing a duplicate; a second
-  repeat stops honestly. Eval mode pins `repeat_guard=False` so canned
-  identical plans in unit fixtures are accepted as-is.
+  repeat stops honestly. Eval defaults to `repeat_guard=False` so canned
+  identical plans in unit fixtures are accepted as-is; set `[meta]
+  repeat_guard = true` (or a per-test `repeat_guard`) to evaluate the guarded
+  behavior.
 - **P3 — tunable `__continue__` gate**: `[meta] continue_threshold` (0..1,
   default 0.5) + `continue_question` override, `--continue-threshold` CLI
   flag (wins), and per-test `continue_threshold` in eval TOML (wins for that
@@ -269,3 +271,8 @@ cd ../python-qa && ./run_eval.sh
 `eval-results.jsonl` is git-ignored; the tables above are the checked-in
 record of the 2026-09-26 run (final verification: 1 full run each after 2
 stability runs per example).
+
+Both example `environment.toml` files now set `temperature = 0.0` explicitly
+(forwarded via `extra_body`), and run logs record the value used. The
+2026-09-26 results above predate that explicit setting; rerun before citing
+them as temperature-controlled measurements.

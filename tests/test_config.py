@@ -125,6 +125,17 @@ argv = ["cp", "{path:src}", "{path:dst}"]
     assert cmd.paths[1].optional is True
 
 
+def test_path_base_must_be_printable_relative(tmp_path):
+    body = (
+        '[[command]]\nname = "ls"\ndescription = "list"\n'
+        'argv = ["ls", "{path:target}"]\n\n'
+        '  [[command.path]]\n  name = "target"\n  kind = "dirs"\n'
+        '  base = "src\\nx"\n'
+    )
+    with pytest.raises(ConfigError, match="printable relative path"):
+        load_config(_write(tmp_path, body))
+
+
 def test_mixed_legacy_and_slots_rejected(tmp_path):
     body = """\
 [[command]]

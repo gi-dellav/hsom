@@ -2,6 +2,7 @@
 # optional defaults for every [[test]] below
 # cwd = "."
 # min_confidence = 0.5
+# repeat_guard = false     # true = re-plan repeated argv instead of accepting it
 # Every test is planned single-shot (max_steps = 1): eval never chains.
 
 [[test]]

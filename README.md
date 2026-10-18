@@ -64,7 +64,7 @@ max_steps = 1             # 1..10 upper bound; >1 lets Jev decide to continue
 max_history = 5           # optional; cap history entries sent back to Jev
 continue_threshold = 0.5  # optional; Noul bar for the __continue__ chaining gate
 continue_question = "..." # optional; override the __continue__ gate instructions
-temperature = 0.0         # optional; sampling temperature (extra_body)
+temperature = 0.0         # optional; extra_body passthrough (provider-dependent)
 command_question = "What shell task is the user asking for?"
 
   [meta.risk_thresholds]
@@ -72,6 +72,12 @@ command_question = "What shell task is the user asking for?"
   write = 0.7
   destructive = 0.9
 ```
+
+`temperature` is forwarded through the SDK's `extra_body`. The OpenRouter
+System One schema does not document a temperature parameter, so treat it as
+provider-dependent and not as a determinism guarantee. The benchmark configs
+set it explicitly to `0.0`, and run logs record the value used
+(`temperature` in `plan`/`eval` events).
 
 ### Commands, subcommands, flags, and paths
 
@@ -121,8 +127,9 @@ instructions_subcommand = "Which git subcommand does the request need?"
 ```
 
 `stated_question` is an optional yes/no gate for **optional** slots: when
-Jev says the request names no specific path, the slot is omitted. It has
-no effect on required slots.
+Jev says the request names no specific path, the slot is omitted. A
+missing, malformed, or non-Noul gate answer is fail-closed and also omits
+the slot. It has no effect on required slots.
 
 ### Multi-path and legacy v1 style
 
@@ -209,9 +216,13 @@ except the live `plan` demo, which needs `TYPESAFE_API_KEY` or
 - L2 (subcommand): run base `argv` as-made; abstain if none.
 - Valued-flag/path layer: omit if optional; abstain if required.
 
+Missing/malformed answers are fail-closed: flags stay off, optional slots are
+omitted, a missing required path abstains, and an absent `__continue__` gate
+stops the chain.
+
 Confidence = the least-certain Choice layer.
 
-Threshold resolution (highest first): CLI `--min-confidence` > per-node > per-risk tier > global. The reason names the winner, e.g. `below minimum 0.70 (risk write)`.
+Threshold resolution: CLI `--min-confidence` (explicit override) > the stricter of per-node `min_confidence` and the per-risk tier (the tier is a floor, so a node cannot weaken it) > global. The reason names the winner, e.g. `below minimum 0.70 (risk write)`.
 
 ### Chaining
 
@@ -251,7 +262,7 @@ input = "launch the rockets"
 expect_abstain = true             # pass iff Jev abstains (no expected)
 ```
 
-Per-test overrides exist for `cwd` (relative, joined onto `--cwd`), `min_confidence`, and `continue_threshold`. `[meta]` provides defaults for all three.
+Per-test overrides exist for `cwd` (relative, joined onto `--cwd`), `min_confidence`, `continue_threshold`, and `repeat_guard`. `[meta]` provides defaults for all four. Eval defaults `repeat_guard` to `false` so canned multi-step fixtures may repeat an argv; set it to `true` to exercise the live anti-repeat behavior (re-plan once, then stop before executing a duplicate).
 
 - A string `expected` runs single-shot (`max_steps = 1`, no `__continue__` gate).
 - An array runs `max_steps = len(expected)`. Every planned step's argv must match the matching entry, so Jev must not stop early.
@@ -279,4 +290,6 @@ Nothing is written without `--log`. The file opens in append mode.
 - `src/hsom/api.py` – `Harness`/`RunResult` Python library API (shares the dispatcher/executor with the CLI)
 - `src/hsom/eval.py` – `--eval` toml loading + no-exec comparison harness
 - `src/hsom/runlog.py` – opt-in JSONL run logging (`--log`)
+- `THREAT_MODEL.md` – attacker-controlled channels, mitigations, residual risks
+- `READ_TIER_AUDIT.md` – per-command justification for the read tier
 - `tests/` – test suite (`PYTHONPATH=src:tests pytest`)

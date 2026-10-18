@@ -8,6 +8,7 @@ provider = "openrouter"
 default_risk = "read"
 max_steps = 1
 max_history = 5
+temperature = 0.0
 command_question = "What shell task is the user asking for?"
   [meta.risk_thresholds]
   read = 0.5

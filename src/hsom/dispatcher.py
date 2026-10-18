@@ -238,13 +238,17 @@ def plan_from_answers(
         picked: str | None = None
         if slot.optional:
             gate = answers.get(f"path_stated.{key}.{slot.name}")
-            if gate is not None and getattr(gate, "type", None) == "noul":
+            if gate is None or getattr(gate, "type", None) != "noul":
+                # Missing/malformed gate => fail-closed: omit the slot.
+                continue
+            try:
                 gv = float(gate.noul)
-                layers.append(LayerDetail(f"path_stated.{key}.{slot.name}",
-                                          "yes" if gv >= PATH_YES else "no", gv, None, {}))
-                if gv < PATH_YES:
-                    continue
-            # missing gate => fall through to choice (fail-open to model, still strict)
+            except (TypeError, ValueError):
+                continue
+            layers.append(LayerDetail(f"path_stated.{key}.{slot.name}",
+                                      "yes" if gv >= PATH_YES else "no", gv, None, {}))
+            if gv < PATH_YES:
+                continue
         picked = _read_slot_choice(answers, context, key, slot.name, layers, confidences)
         if picked == "__ABSTAIN__":
             if slot.optional:
@@ -496,6 +500,7 @@ def dispatch_sequence(config: EnvConfig, request: str, cwd: str = ".", *,
     budget = max(1, min(10, budget))
     bar, bar_source = effective_continue_threshold(
         config, cli_override=continue_threshold)
+    temp = config.temperature if temperature is None else temperature
     steps: list[StepOutcome] = []
     history: list[dict] = []
     own = False
@@ -510,7 +515,7 @@ def dispatch_sequence(config: EnvConfig, request: str, cwd: str = ".", *,
                 config, request, cwd, client=client,
                 min_confidence=min_confidence, history=history or None,
                 max_steps=budget, max_history=max_history,
-                allow_continue=ask_continue, temperature=temperature,
+                allow_continue=ask_continue, temperature=temp,
                 step_index=i)
             if logger is not None:
                 from hsom import runlog
@@ -521,7 +526,7 @@ def dispatch_sequence(config: EnvConfig, request: str, cwd: str = ".", *,
                     continue_threshold=bar,
                     continue_threshold_source=bar_source,
                     max_steps=budget, max_history=max_history,
-                    history_len=len(history)))
+                    history_len=len(history), temperature=temp))
             if workflow is not None and i < len(workflow):
                 # pinned workflow: force node, keep model's slots/flags/values
                 node = workflow[i]
@@ -559,7 +564,7 @@ def dispatch_sequence(config: EnvConfig, request: str, cwd: str = ".", *,
                     config, request, cwd, client=client,
                     min_confidence=min_confidence, history=history,
                     max_steps=budget, max_history=max_history,
-                    temperature=temperature, step_index=i,
+                    temperature=temp, step_index=i,
                     ask_continue=ask_continue, prev_argv=preview,
                     logger=logger, continue_threshold=bar,
                     continue_threshold_source=bar_source)
@@ -635,7 +640,9 @@ def _retry_after_repeat(config, request, cwd, *, client,
             continue_threshold=continue_threshold,
             continue_threshold_source=continue_threshold_source,
             max_steps=max_steps, max_history=max_history,
-            history_len=len(history), repeat_retry=True))
+            history_len=len(history), repeat_retry=True,
+            temperature=(config.temperature if temperature is None
+                         else temperature)))
     if not outcome.ok or outcome.action is None:
         return None
     action = outcome.action

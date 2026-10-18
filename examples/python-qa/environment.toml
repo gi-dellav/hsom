@@ -8,6 +8,7 @@ provider = "openrouter"
 default_risk = "read"
 max_steps = 1
 max_history = 5
+temperature = 0.0
 command_question = "What Python QA task is the user asking for: run tests, lint, format-check, run a script, or list files?"
   [meta.risk_thresholds]
   read = 0.5
@@ -19,8 +20,8 @@ command_question = "What Python QA task is the user asking for: run tests, lint,
 name = "pytest"
 description = "run the Python test suite, e.g. 'run tests', 'run tests with short traceback', or as the second step after linting like 'lint then run tests'"
 argv = ["pytest", "-q"]
-risk = "read"
-min_confidence = 0.5
+# Tests import and execute user-controlled code, so this is not read-only.
+risk = "write"
 
   [[command.flag]]
   name = "-x"
@@ -85,7 +86,8 @@ instructions_subcommand = "Does the request need a lint check or a format check?
 name = "python"
 description = "run a Python script, e.g. 'run the app script'"
 argv = ["python", "{path:script}"]
-risk = "read"
+# Runs arbitrary user code, so this is not read-only.
+risk = "write"
 
   [[command.path]]
   name = "script"

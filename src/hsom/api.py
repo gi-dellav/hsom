@@ -244,6 +244,8 @@ class Harness:
         cwd_s = self._resolve_cwd(cwd)
         eff_conf = min_confidence if min_confidence is not None else self._min_confidence
         eff_temp = temperature if temperature is not None else self._temperature
+        if eff_temp is None:
+            eff_temp = self.config.temperature
         eff_client, own_client = self._client_for_call(client)
         try:
             return dispatch(
@@ -317,6 +319,8 @@ class Harness:
         budget = max(1, min(10, budget))
         eff_conf = min_confidence if min_confidence is not None else self._min_confidence
         eff_temp = temperature if temperature is not None else self._temperature
+        if eff_temp is None:
+            eff_temp = self.config.temperature
         eff_hist = max_history if max_history is not None else self._max_history
         eff_cont = (continue_threshold if continue_threshold is not None
                     else self._continue_threshold)
@@ -348,7 +352,7 @@ class Harness:
                         continue_threshold=bar,
                         continue_threshold_source=bar_source,
                         max_steps=budget, max_history=eff_hist,
-                        history_len=len(history)))
+                        history_len=len(history), temperature=eff_temp))
                 if not outcome.ok or outcome.action is None:
                     if logger is not None:
                         logger.log(runlog.result_event(
@@ -489,7 +493,9 @@ class Harness:
                 continue_asked=ask_continue,
                 continue_value=continue_info(response),
                 max_steps=max_steps, max_history=max_history,
-                history_len=len(history), repeat_retry=True))
+                history_len=len(history), repeat_retry=True,
+                temperature=(self.config.temperature
+                             if temperature is None else temperature)))
         if not outcome.ok or outcome.action is None:
             return None
         action = outcome.action
@@ -503,10 +509,13 @@ class Harness:
 
     # -- eval --------------------------------------------------------
     def eval(self, eval_file_or_cases, *, cwd=None, min_confidence=None,
-             temperature=None, continue_threshold=None, client=None):
+             temperature=None, continue_threshold=None, repeat_guard=False,
+             client=None):
         """Run eval cases (plans only, never executes). Returns EvalSummary.
 
         Accepts an eval TOML path or a pre-loaded ``list[EvalCase]``.
+        ``repeat_guard`` defaults to False (canned duplicate steps allowed);
+        per-case ``repeat_guard`` overrides it.
         """
         from hsom.eval import load_eval, run_eval
         if isinstance(eval_file_or_cases, (str, os.PathLike)):
@@ -518,13 +527,16 @@ class Harness:
                     else self._min_confidence)
         eff_temp = (temperature if temperature is not None
                     else self._temperature)
+        if eff_temp is None:
+            eff_temp = self.config.temperature
         eff_cont = (continue_threshold if continue_threshold is not None
                     else self._continue_threshold)
         eff_client, own_client = self._client_for_call(client)
         try:
             return run_eval(self.config, cases, base_cwd, client=eff_client,
                             min_confidence=eff_conf, temperature=eff_temp,
-                            continue_threshold=eff_cont)
+                            continue_threshold=eff_cont,
+                            repeat_guard=repeat_guard)
         finally:
             if own_client:
                 try:

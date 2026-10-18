@@ -14,6 +14,8 @@ Schema (eval.toml):
   cwd = "subdir"                  # optional; overrides base --cwd for this test
   min_confidence = 0.8            # optional; overrides CLI/global thresholds
   continue_threshold = 0.4        # optional; overrides the __continue__ gate bar
+  repeat_guard = true             # optional; re-plan a repeated argv (default
+                                  # false so canned multi-step fixtures repeat)
 
   [[test]]
   name = "stage then status"
@@ -23,6 +25,7 @@ Schema (eval.toml):
   [meta]                          # optional defaults for all tests
   cwd = "."
   min_confidence = 0.5
+  repeat_guard = false            # eval default: accept canned duplicate steps
 
 In eval mode no shell commands are executed: each input goes through
 dispatcher.dispatch()/dispatch_sequence() + executor.resolve_argv() only.
@@ -57,6 +60,7 @@ class EvalCase:
     cwd: str | None = None
     min_confidence: float | None = None
     continue_threshold: float | None = None
+    repeat_guard: bool | None = None
 
     @property
     def steps(self) -> int:
@@ -110,6 +114,7 @@ def load_eval(path: str) -> list[EvalCase]:
     meta_cwd = _opt_cwd(meta, f"{path} [meta]")
     meta_conf = _opt_threshold(meta, f"{path} [meta]")
     meta_cont = _opt_threshold(meta, f"{path} [meta]", key="continue_threshold")
+    meta_guard = _opt_bool(meta, "repeat_guard", False, f"{path} [meta]")
 
     raw_tests = data.get("test")
     if raw_tests is None:
@@ -121,18 +126,20 @@ def load_eval(path: str) -> list[EvalCase]:
     seen_names: set[str] = set()
     for i, raw in enumerate(raw_tests, 1):
         default_name = f"test-{i}"
-        cases.append(_parse_case(raw, i, default_name, path, meta_cwd, meta_conf, seen_names, meta_cont))
+        cases.append(_parse_case(raw, i, default_name, path, meta_cwd, meta_conf,
+                                 seen_names, meta_cont, meta_guard))
     return cases
 
 
 def _parse_case(d: dict, idx: int, default_name: str, path: str,
                 meta_cwd: str | None, meta_conf: float | None,
-                seen_names: set[str], meta_cont: float | None = None) -> EvalCase:
+                seen_names: set[str], meta_cont: float | None = None,
+                meta_guard: bool = False) -> EvalCase:
     ctx = f"{path} [[test]] #{idx}"
     if not isinstance(d, dict):
         raise EvalError(f"{ctx}: test must be a table")
     allowed = {"name", "input", "expected", "expect_abstain", "cwd",
-               "min_confidence", "continue_threshold"}
+               "min_confidence", "continue_threshold", "repeat_guard"}
     for k in d:
         if k not in allowed:
             raise EvalError(f"{ctx}: unknown key '{k}'")
@@ -205,9 +212,15 @@ def _parse_case(d: dict, idx: int, default_name: str, path: str,
     else:
         cont = meta_cont
 
+    if "repeat_guard" in d:
+        guard = _opt_bool(d, "repeat_guard", meta_guard, ctx)
+    else:
+        guard = meta_guard
+
     return EvalCase(name=name, input=request, expected=expected,
                     expected_str=expected_str, expect_abstain=expect_abstain,
-                    cwd=cwd, min_confidence=conf, continue_threshold=cont)
+                    cwd=cwd, min_confidence=conf, continue_threshold=cont,
+                    repeat_guard=guard)
 
 
 def _opt_cwd(d: dict, ctx: str) -> str | None:
@@ -219,6 +232,13 @@ def _opt_cwd(d: dict, ctx: str) -> str | None:
     v = v.strip()
     if os.path.isabs(v):
         raise EvalError(f"{ctx}: 'cwd' must be relative (joined onto --cwd)")
+    return v
+
+
+def _opt_bool(d: dict, key: str, default: bool, ctx: str) -> bool:
+    v = d.get(key, default)
+    if not isinstance(v, bool):
+        raise EvalError(f"{ctx}: '{key}' must be true/false")
     return v
 
 
@@ -234,7 +254,8 @@ def _opt_threshold(d: dict, ctx: str, key: str = "min_confidence") -> float | No
 def run_eval(config, cases: list[EvalCase], base_cwd: str = ".", *,
              client=None, min_confidence: float | None = None,
              temperature: float | None = None,
-             continue_threshold: float | None = None) -> EvalSummary:
+             continue_threshold: float | None = None,
+             repeat_guard: bool = False) -> EvalSummary:
     """Plan each case via Jev and compare against expected. Never executes.
 
     Single-string cases use dispatcher.dispatch() with max_steps=1.
@@ -243,9 +264,10 @@ def run_eval(config, cases: list[EvalCase], base_cwd: str = ".", *,
     subprocess runs and no confirm prompt appears. Every step's argv must match
     the matching expected entry. Returns an EvalSummary.
 
-    NOTE: eval runs with ``repeat_guard=False`` so a pinned identical plan
-    across steps (e.g. ``["pytest -q", "pytest -q"]``) is accepted as-is;
-    the P2 anti-repeat retry only fires on live chained runs.
+    Anti-repeat defaults to off in eval (``repeat_guard=False``) so canned
+    multi-step fixtures may repeat an identical argv. Set ``[meta]
+    repeat_guard = true`` or a per-test ``repeat_guard`` to test the live
+    behavior, which re-plans once and then stops before executing a duplicate.
     """
     from hsom.dispatcher import dispatch, dispatch_sequence
     from hsom.executor import ExecutionError, resolve_argv
@@ -259,6 +281,8 @@ def run_eval(config, cases: list[EvalCase], base_cwd: str = ".", *,
         bar = case.min_confidence if case.min_confidence is not None else min_confidence
         cont_bar = (case.continue_threshold if case.continue_threshold is not None
                     else continue_threshold)
+        guard = (case.repeat_guard if case.repeat_guard is not None
+                 else repeat_guard)
         n = case.steps
         try:
             if case.expect_abstain:
@@ -297,7 +321,7 @@ def run_eval(config, cases: list[EvalCase], base_cwd: str = ".", *,
                 steps, reason = dispatch_sequence(
                     config, case.input, cwd, client=client, min_confidence=bar,
                     max_steps=n, temperature=temperature, execute_fn=no_exec,
-                    continue_threshold=cont_bar, repeat_guard=False,
+                    continue_threshold=cont_bar, repeat_guard=guard,
                     on_confirm=lambda action, argv: True)
                 if not steps:
                     results.append(EvalTestResult(case, False, None, reason))

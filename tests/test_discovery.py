@@ -88,3 +88,19 @@ def test_dash_prefixed_names_are_never_candidates(tmp_path):
         validate_selection("-rf", "both", cwd)
     with pytest.raises(ValueError, match="may not start with '-'"):
         validate_selection("-rf", PathSlot(name="s", kind="files"), cwd)
+
+
+@pytest.mark.parametrize("bad", ["evil\nname.py", "evil\rname.py",
+                                 "evil\x1bname.py", "evil\tname.py"])
+def test_control_char_names_are_never_candidates(tmp_path, bad):
+    (tmp_path / bad).write_text("x")
+    (tmp_path / "ok.py").write_text("x")
+    cwd = str(tmp_path)
+    assert list_candidates("both", cwd) == ["ok.py"]
+    assert discover(PathSlot(name="s", kind="both"), cwd) == ["ok.py"]
+    assert discover(PathSlot(name="s", kind="both", include_dotfiles=True),
+                    cwd) == ["ok.py"]
+    with pytest.raises(ValueError, match="invalid path selection"):
+        validate_selection(bad, "both", cwd)
+    with pytest.raises(ValueError, match="invalid path selection"):
+        validate_selection(bad, PathSlot(name="s", kind="files"), cwd)

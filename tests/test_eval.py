@@ -33,7 +33,8 @@ def test_load_ok_with_defaults(tmp_path):
     assert cfg[0] == EvalCase(name="status", input="show git status",
                               expected=(("git", "status"),),
                               expected_str=("git status",),
-                              expect_abstain=False, cwd=None, min_confidence=None)
+                              expect_abstain=False, cwd=None, min_confidence=None,
+                              repeat_guard=False)
     assert cfg[1].expected == (("git", "log", "--oneline"),)
     assert cfg[0].steps == 1 and cfg[1].steps == 1
 
@@ -110,6 +111,30 @@ continue_threshold = 0.7
     with pytest.raises(EvalError, match="continue_threshold"):
         load_eval(_write(tmp_path, '[[test]]\ninput = "x"\n'
                                    'expected = "y"\ncontinue_threshold = 2\n'))
+
+
+def test_load_repeat_guard(tmp_path):
+    body = """\
+[meta]
+repeat_guard = true
+
+[[test]]
+name = "a"
+input = "x"
+expected = ["pytest -q", "pytest -q"]
+
+[[test]]
+name = "b"
+input = "y"
+expected = ["pytest -q", "pytest -q"]
+repeat_guard = false
+"""
+    a, b = load_eval(_write(tmp_path, body))
+    assert a.repeat_guard is True
+    assert b.repeat_guard is False
+    with pytest.raises(EvalError, match="repeat_guard"):
+        load_eval(_write(tmp_path, '[[test]]\ninput = "x"\n'
+                                   'expected = "y"\nrepeat_guard = "yes"\n'))
 
 
 def test_load_multistep_array_errors(tmp_path):
@@ -301,6 +326,36 @@ def test_run_eval_multistep_early_stop_fails(config, workdir, monkeypatch):
     summary = run_eval(config, [case], workdir)
     assert not summary.ok
     assert "expected 2 step(s) but Jev produced 1" in summary.results[0].reason
+
+
+def test_run_eval_repeat_guard_is_configurable(config, workdir, monkeypatch):
+    import types
+
+    import hsom.dispatcher as disp
+    from conftest import FakeNoul
+
+    calls = {"n": 0}
+
+    def fake_dispatch(cfg, request, cwd=".", **kw):
+        calls["n"] += 1
+        a = PlannedAction(command="pytest", subcommand=None, confidence=0.99,
+                          risk="read")
+        resp = types.SimpleNamespace(answers={"__continue__": FakeNoul(0.99)})
+        return _outcome(a), None, None, resp
+
+    monkeypatch.setattr(disp, "dispatch", fake_dispatch)
+    kwargs = dict(name="t", input="run tests",
+                  expected=(("pytest", "-q"), ("pytest", "-q")),
+                  expected_str=("pytest -q", "pytest -q"))
+
+    blocked = run_eval(config, [EvalCase(**kwargs, repeat_guard=True)], workdir)
+    assert not blocked.ok
+    assert "repeats" in blocked.results[0].reason
+
+    calls["n"] = 0
+    accepted = run_eval(config, [EvalCase(**kwargs, repeat_guard=False)], workdir)
+    assert accepted.ok
+    assert calls["n"] == 2
 
 
 def test_run_eval_multistep_never_executes(config, workdir, monkeypatch):

@@ -50,7 +50,8 @@ one kept-failing chain (`lint then format`), 7 abstention cases.
   extra flag is needed; `./run_eval.sh` also passes `--provider openrouter`
   explicitly (CLI wins, same value).
 - Eval mode never executes and never prompts: `write`-risk nodes like
-  `git add` / `cp` are only *planned*.
+  `pytest`, `python`, `git add`, and `cp` are only *planned*. In live runs
+  `pytest`/`python` require confirmation because they execute user code.
 - Results of the last benchmark run live in [`BENCHMARKS.md`](BENCHMARKS.md).
   `eval-results.jsonl` files are git-ignored build artifacts — regenerate with
   the scripts above.
