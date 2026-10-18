@@ -197,7 +197,7 @@ def _add_slot_questions(questions, candidates, node_key, slot, cwd) -> None:
             "narrow 'glob', lower 'depth', or raise 'max_results'"
         )
     label = slot.description or f"for '{node_key}'"
-    criteria = {name: None for name in cands}
+    criteria: dict[str, str | None] = {name: None for name in cands}
     criteria[RESERVED] = NONE_PATH_DESC
     questions[f"path.{node_key}.{slot.name}"] = Choice(
         instructions=slot.question or f"Which file or directory {label} does the request refer to?",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -13,9 +14,58 @@ from hsom.dispatcher import PlannedAction
 PATH_SLOT_RE = re.compile(r"\{path(?::([a-z0-9_-]+))?\}")
 VALUE_PH = "{value}"
 
+#: Environment variables that must never reach a child process. These are
+#: either hsom's own provider credentials or names that conventionally carry
+#: secrets. Matching is case-insensitive (Windows env names are).
+_SECRET_ENV_NAMES = frozenset({
+    "TYPESAFE_API_KEY",
+    "OPENROUTER_API_KEY",
+    "API_KEY",
+    "TOKEN",
+    "SECRET",
+    "PASSWORD",
+    "PRIVATE_KEY",
+    "CREDENTIALS",
+})
+_SECRET_ENV_SUFFIXES = (
+    "_API_KEY",
+    "_TOKEN",
+    "_SECRET",
+    "_PASSWORD",
+    "_PASSWD",
+    "_CREDENTIALS",
+    "_PRIVATE_KEY",
+    "_ACCESS_KEY",
+    "_ACCESS_KEY_ID",
+    "_SECRET_KEY",
+)
+
 
 class ExecutionError(Exception):
     pass
+
+
+class ExecutionTimeout(ExecutionError):
+    """The child process exceeded its timeout."""
+
+
+class CommandNotFound(ExecutionError):
+    """The resolved executable does not exist."""
+
+
+class SpawnError(ExecutionError):
+    """The child process could not be started for any other OS-level reason."""
+
+
+def _is_secret_env(name: str) -> bool:
+    upper = name.upper()
+    return upper in _SECRET_ENV_NAMES or upper.endswith(_SECRET_ENV_SUFFIXES)
+
+
+def safe_env(environ: dict[str, str] | None = None) -> dict[str, str]:
+    """Return a copy of the environment without provider/secret-like vars."""
+    source = os.environ if environ is None else environ
+    return {k: v for k, v in source.items() if not _is_secret_env(k)}
 
 
 @dataclass(frozen=True)
@@ -68,19 +118,23 @@ def resolve_argv(config: EnvConfig, action: PlannedAction, cwd: str = ".") -> li
     for name, slot in slots.items():
         if name not in paths and not slot.optional:
             # required slot missing: only ok if template has no ref (misconfig caught at load)
-            refs = {m.group(1) or "path" for t in template for m in PATH_SLOT_RE.finditer(t)}
-            if name in refs or "path" in refs:
+            required_refs = {
+                m.group(1) or "path"
+                for t in template
+                for m in PATH_SLOT_RE.finditer(t)
+            }
+            if name in required_refs or "path" in required_refs:
                 raise ExecutionError(f"missing required path for '{action.node_key}.{name}'")
 
     argv: list[str] = []
     for token in template:
-        refs = [(m.group(1) or "path") for m in PATH_SLOT_RE.finditer(token)]
-        if len(set(refs)) > 1:
+        token_refs = [(m.group(1) or "path") for m in PATH_SLOT_RE.finditer(token)]
+        if len(set(token_refs)) > 1:
             raise ExecutionError(f"argv token {token!r} mixes path slots")
-        if not refs:
+        if not token_refs:
             argv.append(token)
             continue
-        slot_name = refs[0]
+        slot_name = token_refs[0]
         slot = slots.get(slot_name)
         if slot is None:
             raise ExecutionError(f"unknown path slot '{slot_name}' for '{action.node_key}'")
@@ -97,7 +151,7 @@ def resolve_argv(config: EnvConfig, action: PlannedAction, cwd: str = ".") -> li
         try:
             validate_selection(val, slot, cwd)
         except ValueError as e:
-            raise ExecutionError(str(e))
+            raise ExecutionError(str(e)) from e
         argv.append(token.replace(f"{{path:{slot_name}}}", val).replace("{path}", val))
 
     # append chosen flag fragments in toml order
@@ -127,12 +181,15 @@ def execute(
         proc = subprocess.run(
             argv, shell=False, cwd=cwd or ".",
             capture_output=True, text=True, errors="replace",
+            env=safe_env(),
             timeout=config.timeout if timeout is None else timeout,
         )
-    except subprocess.TimeoutExpired:
-        raise ExecutionError(f"command timed out after {timeout or config.timeout}s: {' '.join(argv)}")
-    except FileNotFoundError:
-        raise ExecutionError(f"executable not found: {argv[0]!r}")
+    except subprocess.TimeoutExpired as e:
+        raise ExecutionTimeout(
+            f"command timed out after {timeout or config.timeout}s: {' '.join(argv)}"
+        ) from e
+    except FileNotFoundError as e:
+        raise CommandNotFound(f"executable not found: {argv[0]!r}") from e
     except OSError as e:
-        raise ExecutionError(f"failed to run {' '.join(argv)}: {e}")
+        raise SpawnError(f"failed to run {' '.join(argv)}: {e}") from e
     return ExecutionResult(argv=argv, returncode=proc.returncode, stdout=proc.stdout, stderr=proc.stderr)

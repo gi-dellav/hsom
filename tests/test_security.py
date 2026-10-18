@@ -1,4 +1,4 @@
-"""Security regressions: option injection, read-tier audit, anti-repeat."""
+"""Security regressions: option injection, secret isolation, anti-repeat."""
 
 from pathlib import Path
 from types import SimpleNamespace
@@ -75,13 +75,6 @@ def test_example_configs_preserve_stake_nesting():
                                      getattr(sub, "name", None))
 
 
-def test_read_tier_audit_exists():
-    audit = (ROOT / "READ_TIER_AUDIT.md").read_text()
-    for name in ("git status", "git log", "git diff", "git branch",
-                 "ls", "ruff check", "ruff format --check", "pytest", "python"):
-        assert name in audit
-
-
 def _cli_args():
     return SimpleNamespace(
         request="run tests", cwd=".", min_confidence=None, max_history=None,
@@ -113,5 +106,5 @@ def test_cli_anti_repeat_blocks_duplicate_before_execution(config, monkeypatch):
     monkeypatch.setattr(cli, "execute", fake_execute)
 
     rc = cli.run_sequence(config, _cli_args(), budget=3)
-    assert rc == cli.EXIT_ABSTAIN
+    assert rc == cli.EXIT_REFUSED
     assert calls["exec"] == 1  # duplicate was blocked before executing

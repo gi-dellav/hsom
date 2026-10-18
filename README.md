@@ -267,16 +267,51 @@ Per-test overrides exist for `cwd` (relative, joined onto `--cwd`), `min_confide
 - A string `expected` runs single-shot (`max_steps = 1`, no `__continue__` gate).
 - An array runs `max_steps = len(expected)`. Every planned step's argv must match the matching entry, so Jev must not stop early.
 
-Exit 0 when all tests pass, 5 otherwise. See `eval.toml.example`.
+Exit 0 when all tests pass, 5 on mismatches, 2 on config/eval load errors,
+and 6 when any case failed because the Jev provider call failed. See
+[Exit codes](#exit-codes). See `eval.toml.example`.
+
+## Exit codes
+
+| Code | Meaning |
+| ---- | ------- |
+| 0 | success |
+| 2 | config/usage error, missing API key, or unloadable eval file |
+| 3 | Jev abstained (no matching command/path or low confidence) |
+| 4 | the command executed and returned a non-zero exit status |
+| 5 | eval completed with one or more mismatches |
+| 6 | Jev/provider API error |
+| 7 | internal/unexpected harness error |
+| 8 | user declined a write/destructive action |
+| 9 | planned action refused before execution (invalid/stale plan or repeat guard) |
+| 10 | command timed out |
+| 11 | executable not found or could not be spawned |
 
 ## Run logging
 
-`--log PATH` (opt-in) appends one JSON object per line.
+`--log PATH` (opt-in) appends one JSON object per line. Log files are created
+with mode `0600` (owner read/write only), and an existing file is tightened to
+`0600` when opened. `result` and `eval` events include an `error_kind` field
+(`abstain`, `declined`, `refused`, `timeout`, `spawn`, `exec`, `provider`,
+`internal`) when a step ends in an error.
 
 - Interactive runs emit a `plan` event (state summary, node, flags, paths, confidence, risk, threshold/threshold_source, per-layer decisions, continue gate) followed by a `result` event (resolved argv, dry-run/declined/error, returncode, stdout, stderr) for each step. A duplicate step that is re-planned emits an extra `plan` event with `repeat_retry: true`.
 - Eval mode emits one `eval` event per `[[test]]`.
 
 Nothing is written without `--log`. The file opens in append mode.
+
+## Security notes
+
+- Executed commands never inherit hsom's provider credentials: child processes
+  receive a copy of the environment with `TYPESAFE_API_KEY`,
+  `OPENROUTER_API_KEY`, and variables ending in `_API_KEY`, `_TOKEN`,
+  `_SECRET`, `_PASSWORD`, `_PASSWD`, `_CREDENTIALS`, `_PRIVATE_KEY`,
+  `_ACCESS_KEY`, or `_SECRET_KEY` removed.
+- Commands run with `shell=False`, using only the argv template from
+  `environment.toml`; path values are revalidated against the live filesystem
+  before execution.
+- Run logs may contain command stdout/stderr, so keep them private (`0600` by
+  default) and avoid logging secrets in command output.
 
 ## Layout
 
@@ -290,6 +325,4 @@ Nothing is written without `--log`. The file opens in append mode.
 - `src/hsom/api.py` – `Harness`/`RunResult` Python library API (shares the dispatcher/executor with the CLI)
 - `src/hsom/eval.py` – `--eval` toml loading + no-exec comparison harness
 - `src/hsom/runlog.py` – opt-in JSONL run logging (`--log`)
-- `THREAT_MODEL.md` – attacker-controlled channels, mitigations, residual risks
-- `READ_TIER_AUDIT.md` – per-command justification for the read tier
 - `tests/` – test suite (`PYTHONPATH=src:tests pytest`)

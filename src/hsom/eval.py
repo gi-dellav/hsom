@@ -75,6 +75,7 @@ class EvalTestResult:
     reason: str
     confidence: float = 0.0
     risk: str | None = None
+    error_kind: str | None = None
 
 
 @dataclass(frozen=True)
@@ -87,6 +88,11 @@ class EvalSummary:
     @property
     def ok(self) -> bool:
         return self.failed == 0
+
+    @property
+    def provider_errors(self) -> int:
+        """Number of cases that failed because the Jev provider call failed."""
+        return sum(1 for r in self.results if r.error_kind == "provider")
 
 
 def load_eval(path: str) -> list[EvalCase]:
@@ -271,6 +277,7 @@ def run_eval(config, cases: list[EvalCase], base_cwd: str = ".", *,
     """
     from hsom.dispatcher import dispatch, dispatch_sequence
     from hsom.executor import ExecutionError, resolve_argv
+    from typesafe_sdk import TypeSafeError
 
     def no_exec(action, cwd):
         return (resolve_argv(config, action, cwd), 0, "", "")
@@ -284,6 +291,9 @@ def run_eval(config, cases: list[EvalCase], base_cwd: str = ".", *,
         guard = (case.repeat_guard if case.repeat_guard is not None
                  else repeat_guard)
         n = case.steps
+        actual: tuple[tuple[str, ...], ...] | None = None
+        conf: float = 0.0
+        risk: str | None = None
         try:
             if case.expect_abstain:
                 outcome, _q, _c, _r = dispatch(
@@ -330,12 +340,21 @@ def run_eval(config, cases: list[EvalCase], base_cwd: str = ".", *,
                 conf = min(s.action.confidence for s in steps)
                 risk = steps[-1].action.risk
         except ExecutionError as e:
-            results.append(EvalTestResult(case, False, None, f"refused: {e}"))
+            results.append(EvalTestResult(case, False, None, f"refused: {e}",
+                                          error_kind="refused"))
+            continue
+        except TypeSafeError as e:
+            results.append(EvalTestResult(case, False, None,
+                                          f"Jev call failed: {e}",
+                                          error_kind="provider"))
             continue
         except Exception as e:
-            results.append(EvalTestResult(case, False, None, f"Jev call failed: {e}"))
+            results.append(EvalTestResult(case, False, None,
+                                          f"Jev call failed: {e}",
+                                          error_kind="internal"))
             continue
 
+        assert actual is not None
         if len(actual) != n:
             detail = f" ({reason})" if n > 1 else ""
             results.append(EvalTestResult(

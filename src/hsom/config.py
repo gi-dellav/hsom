@@ -261,7 +261,7 @@ def _check_name(name: str, ctx: str, *, is_flag: bool = False) -> str:
     return name
 
 
-def _check_argv_tokens(tokens: list[str], ctx: str) -> tuple[str, ...]:
+def _check_argv_tokens(tokens: object, ctx: str) -> tuple[str, ...]:
     if not isinstance(tokens, list) or not tokens:
         raise ConfigError(f"{ctx}: 'argv' must be a non-empty list of strings")
     out: list[str] = []

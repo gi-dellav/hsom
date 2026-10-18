@@ -1,7 +1,15 @@
+import subprocess
+
 import pytest
 
 from hsom.dispatcher import PlannedAction
-from hsom.executor import ExecutionError, execute, resolve_argv
+from hsom.executor import (
+    CommandNotFound,
+    ExecutionError,
+    ExecutionTimeout,
+    execute,
+    resolve_argv,
+)
 
 
 def _action(**kw):
@@ -101,3 +109,60 @@ def test_execute_replaces_invalid_utf8(tmp_path):
     res = execute(cfg, a, str(tmp_path))
     assert res.returncode == 0
     assert "\ufffd" in res.stdout
+
+
+def test_execute_strips_secret_environment(monkeypatch, config, workdir):
+    seen = {}
+
+    class Proc:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(argv, **kw):
+        seen["argv"] = argv
+        seen["env"] = kw["env"]
+        return Proc()
+
+    monkeypatch.setattr("hsom.executor.subprocess.run", fake_run)
+    monkeypatch.setenv("TYPESAFE_API_KEY", "ts-secret")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or-secret")
+    monkeypatch.setenv("MY_API_KEY", "custom-secret")
+    monkeypatch.setenv("GITHUB_TOKEN", "gh-secret")
+    monkeypatch.setenv("SERVICE_PASSWORD", "pw-secret")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "aws-secret")
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "aws-key-id")
+    monkeypatch.setenv("API_KEY", "bare-key")
+    monkeypatch.setenv("SAFE_SETTING", "kept")
+
+    action = PlannedAction(command="pytest", subcommand=None, confidence=0.9)
+    execute(config, action, workdir)
+
+    env = seen["env"]
+    for name in ("TYPESAFE_API_KEY", "OPENROUTER_API_KEY", "MY_API_KEY",
+                 "GITHUB_TOKEN", "SERVICE_PASSWORD", "AWS_SECRET_ACCESS_KEY",
+                 "AWS_ACCESS_KEY_ID", "API_KEY"):
+        assert name not in env
+    assert env["SAFE_SETTING"] == "kept"
+    assert "PATH" in env
+
+
+def test_execute_timeout_raises_typed_error(monkeypatch, config, workdir):
+    def fake_run(argv, **kw):
+        raise subprocess.TimeoutExpired(argv, kw["timeout"])
+
+    monkeypatch.setattr("hsom.executor.subprocess.run", fake_run)
+    action = PlannedAction(command="pytest", subcommand=None, confidence=0.9)
+    with pytest.raises(ExecutionTimeout, match="timed out"):
+        execute(config, action, workdir)
+
+
+def test_execute_missing_executable_raises_typed_error(monkeypatch, config,
+                                                       workdir):
+    def fake_run(argv, **kw):
+        raise FileNotFoundError(argv[0])
+
+    monkeypatch.setattr("hsom.executor.subprocess.run", fake_run)
+    action = PlannedAction(command="pytest", subcommand=None, confidence=0.9)
+    with pytest.raises(CommandNotFound, match="executable not found"):
+        execute(config, action, workdir)

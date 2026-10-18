@@ -568,7 +568,7 @@ def test_cli_sequence_repeat_guard_skips_duplicate(monkeypatch, config):
 
     rc = cli.run_sequence(config, _cli_args(
         "run tests", "--max-steps", "3"), 3)
-    assert rc == cli.EXIT_ABSTAIN
+    assert rc == cli.EXIT_REFUSED
     assert len(executed) == 1  # only step 1 actually ran
 
 

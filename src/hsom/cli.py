@@ -19,7 +19,10 @@ from hsom.dispatcher import (
     dispatch,
 )
 from hsom.eval import EvalError, _join, load_eval, run_eval
-from hsom.executor import ExecutionError, execute, resolve_argv
+from hsom.executor import (
+    CommandNotFound, ExecutionError, ExecutionTimeout, SpawnError, execute,
+    resolve_argv,
+)
 from hsom.runlog import JsonlLogger, eval_event, plan_event, result_event
 
 EXIT_OK = 0
@@ -28,6 +31,28 @@ EXIT_ABSTAIN = 3
 EXIT_EXEC_FAIL = 4
 EXIT_EVAL_FAIL = 5
 EXIT_JEV_ERROR = 6
+EXIT_INTERNAL = 7
+EXIT_DECLINED = 8
+EXIT_REFUSED = 9
+EXIT_TIMEOUT = 10
+EXIT_SPAWN = 11
+
+
+def _exec_error_code(exc: ExecutionError) -> int:
+    if isinstance(exc, ExecutionTimeout):
+        return EXIT_TIMEOUT
+    if isinstance(exc, (CommandNotFound, SpawnError)):
+        return EXIT_SPAWN
+    return EXIT_EXEC_FAIL
+
+
+def _exec_error_kind(exc: ExecutionError) -> str:
+    code = _exec_error_code(exc)
+    if code == EXIT_TIMEOUT:
+        return "timeout"
+    if code == EXIT_SPAWN:
+        return "spawn"
+    return "exec"
 
 
 def apply_cli_overrides(config, args):
@@ -157,11 +182,17 @@ def main(argv: list[str] | None = None) -> int:
             return EXIT_CONFIG
         except TypeSafeError as e:
             print(f"hsom: Jev error: {type(e).__name__}: {e}", file=sys.stderr)
+            if logger is not None:
+                logger.log(result_event(1, error=str(e),
+                                        error_kind="provider"))
             return EXIT_JEV_ERROR
         except Exception as e:
-            print(f"hsom: Jev call failed: {type(e).__name__}: {e}",
+            print(f"hsom: internal error: {type(e).__name__}: {e}",
                   file=sys.stderr)
-            return EXIT_ABSTAIN
+            if logger is not None:
+                logger.log(result_event(1, error=str(e),
+                                        error_kind="internal"))
+            return EXIT_INTERNAL
 
         if logger is not None:
             logger.log(plan_event(
@@ -177,7 +208,8 @@ def main(argv: list[str] | None = None) -> int:
                   f"(confidence {outcome.confidence:.2f})", file=sys.stderr)
             if logger is not None:
                 logger.log(result_event(1, error=outcome.reason,
-                                        stop_reason=outcome.reason))
+                                        stop_reason=outcome.reason,
+                                        error_kind="abstain"))
             return EXIT_ABSTAIN
         return run_action(config, args, outcome.action, logger=logger, step=1)
     finally:
@@ -191,8 +223,8 @@ def run_action(config, args, action, logger=None, step: int = 1) -> int:
     except ExecutionError as e:
         print(f"hsom: refused: {e}", file=sys.stderr)
         if logger is not None:
-            logger.log(result_event(step, error=str(e)))
-        return EXIT_ABSTAIN
+            logger.log(result_event(step, error=str(e), error_kind="refused"))
+        return EXIT_REFUSED
     if args.dry_run:
         print(f"+ {' '.join(preview)}  (confidence {action.confidence:.2f}, "
               f"risk {action.risk}) [dry-run]")
@@ -205,18 +237,20 @@ def run_action(config, args, action, logger=None, step: int = 1) -> int:
         if not confirm(action, preview):
             print("hsom: declined by user", file=sys.stderr)
             if logger is not None:
-                logger.log(result_event(step, preview, declined=True))
-            return EXIT_ABSTAIN
+                logger.log(result_event(step, preview, declined=True,
+                                        error_kind="declined"))
+            return EXIT_DECLINED
     else:
         print(f"+ {' '.join(preview)}  (confidence {action.confidence:.2f})")
 
     try:
         result = execute(config, action, args.cwd)
     except ExecutionError as e:
-        print(f"hsom: execution refused/failed: {e}", file=sys.stderr)
+        print(f"hsom: execution failed: {e}", file=sys.stderr)
         if logger is not None:
-            logger.log(result_event(step, preview, error=str(e)))
-        return EXIT_EXEC_FAIL
+            logger.log(result_event(step, preview, error=str(e),
+                                    error_kind=_exec_error_kind(e)))
+        return _exec_error_code(e)
     if result.stdout:
         print(result.stdout, end="")
     if result.stderr:
@@ -250,15 +284,21 @@ def run_sequence(config, args, budget: int, logger=None) -> int:
                 step_index=i)
         except (ConfigError, ValueError) as e:
             print(f"hsom: step {i+1}: {e}", file=sys.stderr)
-            return EXIT_CONFIG if isinstance(e, ConfigError) else EXIT_ABSTAIN
+            return EXIT_CONFIG
         except TypeSafeError as e:
             print(f"hsom: Jev error at step {i+1}: {type(e).__name__}: {e}",
                   file=sys.stderr)
+            if logger is not None:
+                logger.log(result_event(i + 1, error=str(e),
+                                        error_kind="provider"))
             return EXIT_JEV_ERROR
         except Exception as e:
-            print(f"hsom: Jev call failed at step {i+1}: "
+            print(f"hsom: internal error at step {i+1}: "
                   f"{type(e).__name__}: {e}", file=sys.stderr)
-            return EXIT_ABSTAIN
+            if logger is not None:
+                logger.log(result_event(i + 1, error=str(e),
+                                        error_kind="internal"))
+            return EXIT_INTERNAL
         if logger is not None:
             logger.log(plan_event(
                 i + 1, args.request, args.cwd, outcome, context,
@@ -277,12 +317,14 @@ def run_sequence(config, args, budget: int, logger=None) -> int:
                       f"(confidence {outcome.confidence:.2f})", file=sys.stderr)
                 if logger is not None:
                     logger.log(result_event(i + 1, error=outcome.reason,
-                                            stop_reason=outcome.reason))
+                                            stop_reason=outcome.reason,
+                                            error_kind="abstain"))
                 return EXIT_ABSTAIN
             print(f"hsom: stop: {outcome.reason}", file=sys.stderr)
             if logger is not None:
                 logger.log(result_event(i + 1, error=outcome.reason,
-                                        stop_reason=outcome.reason))
+                                        stop_reason=outcome.reason,
+                                        error_kind="abstain"))
             return EXIT_ABSTAIN
         action = outcome.action
         try:
@@ -290,8 +332,9 @@ def run_sequence(config, args, budget: int, logger=None) -> int:
         except ExecutionError as e:
             print(f"hsom: step {i+1} refused: {e}", file=sys.stderr)
             if logger is not None:
-                logger.log(result_event(i + 1, error=str(e)))
-            return EXIT_ABSTAIN
+                logger.log(result_event(i + 1, error=str(e),
+                                        error_kind="refused"))
+            return EXIT_REFUSED
         if history and preview == list(history[-1].get("argv") or []):
             retry = _retry_after_repeat(
                 config, args.request, args.cwd, client=None,
@@ -307,8 +350,9 @@ def run_sequence(config, args, budget: int, logger=None) -> int:
                 print(f"hsom: stop: {reason}", file=sys.stderr)
                 if logger is not None:
                     logger.log(result_event(i + 1, preview,
-                                            stop_reason=f"stop: {reason}"))
-                return EXIT_ABSTAIN
+                                            stop_reason=f"stop: {reason}",
+                                            error_kind="refused"))
+                return EXIT_REFUSED
             outcome, _context, response, preview, action = retry
             if args.show_probs:
                 print(f"# step {i+1}/{budget} (repeat retry):")
@@ -335,8 +379,9 @@ def run_sequence(config, args, budget: int, logger=None) -> int:
             if not confirmed:
                 print("hsom: declined by user", file=sys.stderr)
                 if logger is not None:
-                    logger.log(result_event(i + 1, preview, declined=True))
-                return EXIT_ABSTAIN
+                    logger.log(result_event(i + 1, preview, declined=True,
+                                            error_kind="declined"))
+                return EXIT_DECLINED
         else:
             print(f"{tag}: + {' '.join(preview)}  (confidence {action.confidence:.2f})")
         try:
@@ -344,8 +389,9 @@ def run_sequence(config, args, budget: int, logger=None) -> int:
         except ExecutionError as e:
             print(f"hsom: step {i+1} failed: {e}", file=sys.stderr)
             if logger is not None:
-                logger.log(result_event(i + 1, preview, error=str(e)))
-            return EXIT_EXEC_FAIL
+                logger.log(result_event(i + 1, preview, error=str(e),
+                                        error_kind=_exec_error_kind(e)))
+            return _exec_error_code(e)
         if result.stdout:
             print(result.stdout, end="")
         if result.stderr:
@@ -396,6 +442,10 @@ def run_eval_file(config, args, logger=None) -> int:
                   + (f", risk {r.risk}" if r.risk else "") + ")"
                   + ("" if r.passed else f" -- {r.reason}"))
     print(f"hsom: eval {summary.passed}/{summary.total} passed")
+    if summary.provider_errors:
+        print(f"hsom: {summary.provider_errors} test(s) failed due to Jev "
+              "provider errors", file=sys.stderr)
+        return EXIT_JEV_ERROR
     return EXIT_OK if summary.ok else EXIT_EVAL_FAIL
 
 

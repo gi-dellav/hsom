@@ -6,7 +6,7 @@ One JSON object per line. Two event kinds per executed step:
   confidence, risk, threshold, per-layer decisions) and whether Jev was asked
   to continue.
 - ``result``: the resolved argv plus how it ended (dry-run, declined, refused,
-  or executed with returncode/stdout/stderr).
+  or executed with returncode/stdout/stderr) and an optional ``error_kind``.
 
 Eval mode emits one ``eval`` event per case instead. Logging is entirely
 opt-in (``--log PATH``): nothing is written unless a path is given.
@@ -15,8 +15,9 @@ opt-in (``--log PATH``): nothing is written unless a path is given.
 from __future__ import annotations
 
 import json
+import os
 import time
-from typing import Any
+from typing import Any, TextIO
 
 
 def _layer_obj(layer) -> dict:
@@ -87,7 +88,8 @@ def result_event(step: int, argv: list[str] | None = None, *,
                  dry_run: bool = False, declined: bool = False,
                  returncode: int | None = None, stdout: str = "",
                  stderr: str = "", error: str | None = None,
-                 stop_reason: str | None = None) -> dict:
+                 stop_reason: str | None = None,
+                 error_kind: str | None = None) -> dict:
     """Build a ``result`` event for an attempted/executed step."""
     return {
         "type": "result",
@@ -100,6 +102,7 @@ def result_event(step: int, argv: list[str] | None = None, *,
         "stdout": stdout,
         "stderr": stderr,
         "error": error,
+        "error_kind": error_kind,
         "stop_reason": stop_reason,
     }
 
@@ -122,6 +125,7 @@ def eval_event(case, result, *, temperature: float | None = None) -> dict:
         "actual": fmt(result.actual),
         "passed": result.passed,
         "reason": result.reason,
+        "error_kind": result.error_kind,
         "confidence": result.confidence,
         "risk": result.risk,
         "steps": len(result.actual) if result.actual is not None else 0,
@@ -130,15 +134,28 @@ def eval_event(case, result, *, temperature: float | None = None) -> dict:
 
 
 class JsonlLogger:
-    """Append-only JSONL writer. Use as a context manager or call close()."""
+    """Append-only JSONL writer. Use as a context manager or call close().
+
+    Log files are created and kept at mode 0600 (owner read/write only).
+    """
 
     def __init__(self, path: str):
         self.path = path
-        self._f = None
+        self._f: TextIO | None = None
 
     def log(self, event: dict) -> None:
         if self._f is None:
-            self._f = open(self.path, "a", encoding="utf-8")
+            fd = os.open(
+                self.path,
+                os.O_WRONLY | os.O_CREAT | os.O_APPEND,
+                0o600,
+            )
+            try:
+                os.fchmod(fd, 0o600)
+            except (AttributeError, OSError):
+                # Windows and unusual filesystems may not support fchmod.
+                pass
+            self._f = os.fdopen(fd, "a", encoding="utf-8")
         self._f.write(json.dumps(event, default=str) + "\n")
         self._f.flush()
 

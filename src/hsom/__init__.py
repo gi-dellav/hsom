@@ -22,7 +22,13 @@ from hsom.config import (
 )
 from hsom.dispatcher import LayerDetail, PlannedAction, PlanOutcome, StepOutcome
 from hsom.eval import EvalCase, EvalError, EvalSummary, EvalTestResult, load_eval
-from hsom.executor import ExecutionError, ExecutionResult
+from hsom.executor import (
+    CommandNotFound,
+    ExecutionError,
+    ExecutionResult,
+    ExecutionTimeout,
+    SpawnError,
+)
 
 __all__ = [
     "Harness",
@@ -34,6 +40,9 @@ __all__ = [
     "LayerDetail",
     "ExecutionResult",
     "ExecutionError",
+    "ExecutionTimeout",
+    "CommandNotFound",
+    "SpawnError",
     "EnvConfig",
     "Command",
     "Subcommand",
