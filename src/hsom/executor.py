@@ -50,6 +50,9 @@ def resolve_argv(config: EnvConfig, action: PlannedAction, cwd: str = ".") -> li
             raise ExecutionError(f"flag '{fl}' value {val!r} not allowlisted")
         if fl not in action.flags:
             raise ExecutionError(f"flag '{fl}' has a value but was not selected")
+    for fl in action.flags:
+        if known_flags[fl].values is not None and fl not in (action.flag_values or {}):
+            raise ExecutionError(f"flag '{fl}' requires a value")
 
     slots = {s.name: s for s in node_slots(sub if sub is not None else cmd)}
     paths = dict(action.paths or {})
@@ -118,7 +121,7 @@ def execute(
     try:
         proc = subprocess.run(
             argv, shell=False, cwd=cwd or ".",
-            capture_output=True, text=True,
+            capture_output=True, text=True, errors="replace",
             timeout=config.timeout if timeout is None else timeout,
         )
     except subprocess.TimeoutExpired:

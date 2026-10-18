@@ -1,8 +1,8 @@
 # hsom
 
-*Harness for System One Models. Allows Jev to operate on a bash shell using decision trees.*
+*Harness for System One Models. Runs allowlisted shell commands using decision trees.*
 
-hsom is a strict-allowlist harness. `environment.toml` defines which bash commands Jev (the TypeSafe System One classifier) may select. In one step, Jev picks: command → subcommand → flags (boolean or valued) → path slots; this works by navigating the decision tree as defined by the TOML file.
+hsom is a strict-allowlist harness. `environment.toml` defines which shell commands Jev (the TypeSafe System One classifier) may select. In one step, Jev picks: command → subcommand → flags (boolean or valued) → path slots; this works by navigating the decision tree as defined by the TOML file.
 
 - `read` actions run directly.
 - `write` and `destructive` actions ask for confirmation (`y/N`, default N; non-tty declines).
@@ -118,8 +118,11 @@ instructions_subcommand = "Which git subcommand does the request need?"
     include_dotfiles = false
     max_results = 200
     question = "Which Python file does the request want to stage?"
-    stated_question = "Does the request name a specific Python file?"
 ```
+
+`stated_question` is an optional yes/no gate for **optional** slots: when
+Jev says the request names no specific path, the slot is omitted. It has
+no effect on required slots.
 
 ### Multi-path and legacy v1 style
 
@@ -134,8 +137,8 @@ Run `hsom` with a natural-language request:
 ```bash
 hsom "show git status" --dry-run --show-probs
 hsom "brief git history"              # -> git log --oneline
-hsom "stage readme"                   # -> git add ... (asks [y/N], risk write)
-hsom "copy readme into docs"          # -> cp README.md docs
+hsom "stage main.py"                  # -> git add main.py (asks [y/N], risk write)
+hsom "copy readme into examples"      # -> cp README.md examples
 hsom "run tests" --max-steps 3        # dynamic chaining: Jev decides each step
 hsom "run tests" --max-steps 1        # single shot (never asks to continue)
 hsom "run tests" --max-history 2      # send back at most 2 prior steps
@@ -144,16 +147,16 @@ hsom "run tests" --temperature 0.2    # sampling temperature (extra_body)
 hsom "run tests" --log run.jsonl      # opt-in structured JSONL run log
 hsom "run tests" --min-confidence 0.8 # CLI flag wins over all config
 hsom "run tests" --provider openrouter --dry-run  # one-shot OpenRouter routing
-hsom --eval eval.toml                 # eval harness: plans only, never runs
+hsom --eval eval.toml.example         # eval harness: plans only, never runs
 ```
 
 ## Python library
 
 `hsom` is also an importable library built around the `Harness` class
-(sync-only). The CLI uses the same machinery.
+(sync-only). The CLI shares the same dispatcher/executor machinery.
 
 ```bash
-pip install hsom
+pip install -e .
 ```
 
 ```python
@@ -176,7 +179,7 @@ print(result.stop_reason, [s.argv for s in result.steps])
 
 # Write/destructive steps never prompt on stdin here. Pass on_confirm
 # (default None = fail-closed auto-decline, like the CLI off-tty):
-result = h.run("stage readme", on_confirm=lambda action, argv: True)
+result = h.run("stage main.py", on_confirm=lambda action, argv: True)
 
 # Dynamic working directory: subclass, pass get_cwd=..., assign
 # h.get_cwd = lambda: ..., or h.set_cwd_fn(...) / h.set_cwd(...).
@@ -185,12 +188,15 @@ h.set_cwd_fn(lambda: "/path/to/project")
 result = h.run("run tests", cwd="/override", dry_run=True)
 
 # Eval harness (plans only, never executes) -> EvalSummary.
-summary = h.eval("eval.toml")
+summary = h.eval("eval.toml.example")
 print(f"{summary.passed}/{summary.total} passed")
 ```
 
-Lower-level pieces are re-exported too (`plan_full`, `execute`,
-`load_config`, `load_eval`, `PlannedAction`, `EnvConfig`, ...). See
+`load_config`, `load_eval`, `PlannedAction`, `EnvConfig` and the other
+config/result types are re-exported from `hsom`. Lower-level entry points
+live in their modules: `Harness.plan_full` returns the full
+`(outcome, questions, context, response)` tuple, and
+`resolve_argv`/`execute` are in `hsom.executor`. See
 `examples/library_usage.py` for a runnable version (`dry_run=True`
 except the live `plan` demo, which needs `TYPESAFE_API_KEY` or
 `OPENROUTER_API_KEY` + `provider="openrouter"`).
@@ -211,15 +217,18 @@ Threshold resolution (highest first): CLI `--min-confidence` > per-node > per-ri
 
 `--max-steps N` / `meta.max_steps` set the step budget. N is the upper bound, not a fixed count (`--steps` is a legacy alias).
 
-- While budget remains, each Jev call also answers a `__continue__` Noul gate. After a step succeeds, the loop stops as soon as Jev declines. A missing gate is treated as "stop".
+- The `__continue__` Noul gate is asked on every step except the last budgeted one. After a step succeeds, the loop stops as soon as Jev declines. A missing gate is treated as "stop".
 - The gate bar resolves CLI `--continue-threshold` > `[meta] continue_threshold` > 0.5 default, and is logged per step (`continue_threshold[_source]` in `plan` events). Per-eval-test `continue_threshold` overrides it for that test.
 - On step 2+, the L1 and `__continue__` instructions are step-aware: they name the step number, the completed steps (`node` + argv), and the remaining budget, so Jev plans the *next* part instead of repeating. History entries also carry `node`/`describe` alongside `argv`.
 - If a step resolves to the previous step's argv verbatim, the harness re-plans once with an anti-repeat nudge instead of executing a duplicate; a second repeat stops honestly (`repeat_guard=False` disables this for canned unit probes; eval pins it off).
 - With `--max-steps 1`, the gate is never asked and the run is single-shot.
-- After each step, the CWD is rescanned and `{step, node, describe, argv, returncode, stdout_tail}` is appended to the Jev state history (`state["step"]`/`state["max_steps"]` ride along too). `--max-history N` / `meta.max_history` keeps only the N most recent entries (0 sends none; unset sends all, still bounded by the step budget).
+- After each step, the CWD is rescanned and `{step, node, describe, argv, returncode, stdout_tail, stderr_tail}` is appended to the Jev state history (`state["step"]`/`state["max_steps"]` ride along too). `--max-history N` / `meta.max_history` keeps only the N most recent entries (0 sends none; unset sends all, still bounded by the step budget).
 - The run stops on abstention, non-zero exit (unless `--no-stop-on-error`), decline, Jev's stop decision, a repeated step, or budget exhaustion.
 
 `dispatch_sequence()` in `dispatcher.py` exposes this programmatically.
+Write/destructive steps there are fail-closed unless you pass an
+`on_confirm(action, argv)` hook (the eval harness passes a permissive one
+because it never executes).
 
 ## Eval mode
 
@@ -233,8 +242,8 @@ expected = "git log --oneline"    # shell-parsed, compared as argv list
 
 [[test]]
 name = "stage then status"        # multi-step: expected is an array
-input = "stage readme then show status"
-expected = ["git add README.md", "git status"]   # max_steps = len(expected)
+input = "stage main.py then show status"
+expected = ["git add main.py", "git status"]   # max_steps = len(expected)
 
 [[test]]
 name = "nonsense abstains"
@@ -253,7 +262,7 @@ Exit 0 when all tests pass, 5 otherwise. See `eval.toml.example`.
 
 `--log PATH` (opt-in) appends one JSON object per line.
 
-- Interactive runs emit a `plan` event (state summary, node, flags, paths, confidence, risk, threshold/threshold_source, per-layer decisions, continue gate) followed by a `result` event (resolved argv, dry-run/declined/error, returncode, stdout, stderr) for each step.
+- Interactive runs emit a `plan` event (state summary, node, flags, paths, confidence, risk, threshold/threshold_source, per-layer decisions, continue gate) followed by a `result` event (resolved argv, dry-run/declined/error, returncode, stdout, stderr) for each step. A duplicate step that is re-planned emits an extra `plan` event with `repeat_retry: true`.
 - Eval mode emits one `eval` event per `[[test]]`.
 
 Nothing is written without `--log`. The file opens in append mode.
@@ -267,7 +276,7 @@ Nothing is written without `--log`. The file opens in append mode.
 - `src/hsom/dispatcher.py` – `system_one` call, branch reader, `dispatch_sequence`
 - `src/hsom/executor.py` – strict multi-slot/`{value}` resolution + `subprocess`
 - `src/hsom/cli.py` – `hsom` entrypoint, confirm prompt, step transcript
-- `src/hsom/api.py` – `Harness`/`RunResult` Python library API (CLI uses it)
+- `src/hsom/api.py` – `Harness`/`RunResult` Python library API (shares the dispatcher/executor with the CLI)
 - `src/hsom/eval.py` – `--eval` toml loading + no-exec comparison harness
 - `src/hsom/runlog.py` – opt-in JSONL run logging (`--log`)
-- `tests/` – 134 tests (`PYTHONPATH=src:tests pytest`)
+- `tests/` – test suite (`PYTHONPATH=src:tests pytest`)

@@ -297,7 +297,8 @@ def run_eval(config, cases: list[EvalCase], base_cwd: str = ".", *,
                 steps, reason = dispatch_sequence(
                     config, case.input, cwd, client=client, min_confidence=bar,
                     max_steps=n, temperature=temperature, execute_fn=no_exec,
-                    continue_threshold=cont_bar, repeat_guard=False)
+                    continue_threshold=cont_bar, repeat_guard=False,
+                    on_confirm=lambda action, argv: True)
                 if not steps:
                     results.append(EvalTestResult(case, False, None, reason))
                     continue

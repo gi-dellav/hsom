@@ -32,7 +32,6 @@ from __future__ import annotations
 import dataclasses
 import os
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Callable
 
 from hsom.config import ConfigError, EnvConfig, PROVIDERS, load_config
@@ -202,18 +201,25 @@ class Harness:
     def __exit__(self, *exc) -> None:
         self.close()
 
-    def _active_client(self, override=None):
+    def _client_for_call(self, override=None):
+        """Return ``(client, owned)`` for one plan/run/eval call.
+
+        Explicit/per-construction/context-managed clients are not owned here.
+        Otherwise a client is created with the constructor's ``api_key`` and
+        ``timeout`` and closed by the caller after the call.
+        """
         if override is not None:
             return override, False
         if self._client is not None:
             return self._client, False
         if self._owned_client is not None:
             return self._owned_client, False
-        return None, True  # dispatcher creates + closes per call
+        self._ensure_api_key()
+        from hsom.client import create_client
+        return create_client(self.config, api_key=self._api_key,
+                             timeout=self._timeout), True
 
-    def _ensure_api_key(self, client, execute_fn) -> None:
-        if client is not None or execute_fn is not None:
-            return
+    def _ensure_api_key(self) -> None:
         if self._api_key is not None and self._api_key.strip():
             return
         from hsom.client import has_api_key
@@ -238,11 +244,17 @@ class Harness:
         cwd_s = self._resolve_cwd(cwd)
         eff_conf = min_confidence if min_confidence is not None else self._min_confidence
         eff_temp = temperature if temperature is not None else self._temperature
-        eff_client, _ = self._active_client(client)
-        self._ensure_api_key(eff_client, None)
-        return dispatch(
-            self.config, request, cwd_s, client=eff_client,
-            min_confidence=eff_conf, max_steps=1, temperature=eff_temp)
+        eff_client, own_client = self._client_for_call(client)
+        try:
+            return dispatch(
+                self.config, request, cwd_s, client=eff_client,
+                min_confidence=eff_conf, max_steps=1, temperature=eff_temp)
+        finally:
+            if own_client:
+                try:
+                    eff_client.close()
+                except Exception:
+                    pass
 
     def resolve(self, action, *, cwd=None) -> list[str]:
         """Build argv for a planned action. Raises ExecutionError."""
@@ -293,7 +305,7 @@ class Harness:
         from hsom import runlog
         from hsom.config import effective_continue_threshold
         from hsom.dispatcher import (
-            REPEAT_HINT_STATE, continue_info, continue_requested, dispatch,
+            continue_info, continue_requested, dispatch,
             history_entry,
         )
         from hsom.executor import ExecutionError, resolve_argv
@@ -310,12 +322,7 @@ class Harness:
                     else self._continue_threshold)
         bar, bar_source = effective_continue_threshold(
             self.config, cli_override=eff_cont)
-        eff_client, _ = self._active_client(client)
-        self._ensure_api_key(eff_client, execute_fn)
-        if dry_run and execute_fn is None:
-            # dry-run never needs a live client for execution, but planning
-            # still does (unless a fake client is injected).
-            pass
+        eff_client, own_client = self._client_for_call(client)
 
         own_logger = None
         if log_path is not None and logger is None:
@@ -450,6 +457,11 @@ class Harness:
             return RunResult(steps=tuple(steps), ok=ok,
                              stop_reason="max_steps reached")
         finally:
+            if own_client:
+                try:
+                    eff_client.close()
+                except Exception:
+                    pass
             if own_logger is not None:
                 own_logger.close()
 
@@ -508,11 +520,17 @@ class Harness:
                     else self._temperature)
         eff_cont = (continue_threshold if continue_threshold is not None
                     else self._continue_threshold)
-        eff_client, _ = self._active_client(client)
-        self._ensure_api_key(eff_client, None)
-        return run_eval(self.config, cases, base_cwd, client=eff_client,
-                        min_confidence=eff_conf, temperature=eff_temp,
-                        continue_threshold=eff_cont)
+        eff_client, own_client = self._client_for_call(client)
+        try:
+            return run_eval(self.config, cases, base_cwd, client=eff_client,
+                            min_confidence=eff_conf, temperature=eff_temp,
+                            continue_threshold=eff_cont)
+        finally:
+            if own_client:
+                try:
+                    eff_client.close()
+                except Exception:
+                    pass
 
     # -- misc --------------------------------------------------------
     @property

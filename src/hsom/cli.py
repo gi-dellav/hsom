@@ -15,7 +15,8 @@ from typesafe_sdk import TypeSafeError
 from hsom.api import apply_provider_overrides
 from hsom.config import ConfigError, load_config
 from hsom.dispatcher import (
-    continue_info, continue_requested, describe_action, dispatch,
+    _retry_after_repeat, continue_info, continue_requested, describe_action,
+    dispatch,
 )
 from hsom.eval import EvalError, _join, load_eval, run_eval
 from hsom.executor import ExecutionError, execute, resolve_argv
@@ -275,11 +276,11 @@ def run_sequence(config, args, budget: int, logger=None) -> int:
                     logger.log(result_event(i + 1, error=outcome.reason,
                                             stop_reason=outcome.reason))
                 return EXIT_ABSTAIN
-            print(f"hsom: stop: {outcome.reason}")
+            print(f"hsom: stop: {outcome.reason}", file=sys.stderr)
             if logger is not None:
                 logger.log(result_event(i + 1, error=outcome.reason,
                                         stop_reason=outcome.reason))
-            return final
+            return EXIT_ABSTAIN
         action = outcome.action
         try:
             preview = resolve_argv(config, action, args.cwd)
@@ -288,6 +289,27 @@ def run_sequence(config, args, budget: int, logger=None) -> int:
             if logger is not None:
                 logger.log(result_event(i + 1, error=str(e)))
             return EXIT_ABSTAIN
+        if history and preview == list(history[-1].get("argv") or []):
+            retry = _retry_after_repeat(
+                config, args.request, args.cwd, client=None,
+                min_confidence=args.min_confidence, history=history,
+                max_steps=budget, max_history=args.max_history,
+                temperature=args.temperature, step_index=i,
+                ask_continue=ask_continue, prev_argv=preview, logger=logger,
+                continue_threshold=cont_bar,
+                continue_threshold_source=cont_source)
+            if retry is None:
+                reason = (f"step {i+1} repeats step {i} "
+                          f"({' '.join(preview)}); not executing a duplicate")
+                print(f"hsom: stop: {reason}", file=sys.stderr)
+                if logger is not None:
+                    logger.log(result_event(i + 1, preview,
+                                            stop_reason=f"stop: {reason}"))
+                return EXIT_ABSTAIN
+            outcome, _context, response, preview, action = retry
+            if args.show_probs:
+                print(f"# step {i+1}/{budget} (repeat retry):")
+                _print_layers(outcome)
         tag = f"step {i+1}/{budget}"
         if args.dry_run:
             print(f"{tag}: + {' '.join(preview)}  (confidence {action.confidence:.2f}, "

@@ -151,7 +151,6 @@ def test_dispatch_uses_provider_client(monkeypatch, config, workdir):
 
 def test_cli_provider_and_base_url_overrides():
     from hsom import cli as cli_mod
-    from hsom.config import EnvConfig
 
     cfg = sample_config()
     args = cli_mod.build_parser().parse_args(["x", "--provider", "openrouter"])

@@ -37,7 +37,7 @@ from typesafe_sdk import (
 
 from hsom.config import (
     RESERVED, EnvConfig, effective_continue_threshold, effective_threshold,
-    node_for_selection, node_risk, node_slots,
+    node_risk, node_slots,
 )
 from hsom.questions import CONTINUE_QID
 
@@ -181,7 +181,11 @@ def plan_from_answers(
                     f"'{cmd.name}' needs a subcommand and none matches",
                     _min_or_zero(confidences))
         else:
-            _, found = node_for_selection(config, cmd.name, sub_name)
+            found = next((s for s in cmd.subcommands if s.name == sub_name), None)
+            if found is None:
+                return PlanOutcome(
+                    False, None, f"unknown subcommand '{cmd.name} {sub_name}'",
+                    _min_or_zero(confidences))
             sub = found
     key = cmd.name if sub is None else f"{cmd.name}.{sub.name}"
     node = sub if sub is not None else cmd
@@ -458,7 +462,8 @@ def dispatch_sequence(config: EnvConfig, request: str, cwd: str = ".", *,
                       temperature: float | None = None, execute_fn=None,
                       workflow: list[str] | None = None, logger=None,
                       continue_threshold: float | None = None,
-                      repeat_guard: bool = True):
+                      repeat_guard: bool = True,
+                      on_confirm=None):
     """Chained dispatch: plan -> execute -> refresh -> repeat.
 
     Each step includes a `__continue__` Noul so Jev decides whether to chain
@@ -470,14 +475,19 @@ def dispatch_sequence(config: EnvConfig, request: str, cwd: str = ".", *,
     back to config).
 
     P2 anti-repeat: when step 2+ resolves to the previous step's argv, the
-    harness re-plans once with an anti-repeat nudge. A second repeat (or a
-    failed retry) stops the run honestly instead of executing a duplicate.
+    harness re-plans once with an anti-repeat nudge *before* executing the
+    duplicate. A second repeat (or a failed retry) stops the run honestly.
     `repeat_guard` enables this (default True); pass False in unit probes
     that pin identical fake plans across steps.
 
+    Write/destructive steps are gated by `on_confirm(action, argv) -> bool`.
+    The default (`None`) is fail-closed: they are declined without executing,
+    mirroring the CLI's non-tty behaviour. Eval passes a permissive hook
+    because it only resolves argv and never executes.
+
     Returns (steps, stop_reason) where steps is a list[StepOutcome].
     execute_fn(action, cwd) -> (argv, returncode, stdout, stderr); defaults to
-    hsom.executor.execute (real run). stop_on_error defaults True.
+    hsom.executor.execute (real run). Non-zero exits stop the run.
     logger, when given, is a runlog.JsonlLogger receiving plan/result events.
     """
     from hsom import executor as _executor
@@ -521,7 +531,6 @@ def dispatch_sequence(config: EnvConfig, request: str, cwd: str = ".", *,
                                          parts[1] if len(parts) > 1 else None)
                     if forced is None:
                         return steps, f"workflow step {i+1} node '{node}' invalid"
-                    import dataclasses
                     outcome = _outcome_with_action(config, outcome, forced,
                                                    min_confidence)
                 if not outcome.ok:
@@ -534,39 +543,49 @@ def dispatch_sequence(config: EnvConfig, request: str, cwd: str = ".", *,
                                                    stop_reason=reason))
                 return steps, reason
             action = outcome.action
+            try:
+                preview = list(_executor.resolve_argv(config, action, cwd))
+            except _executor.ExecutionError as e:
+                if logger is not None:
+                    logger.log(runlog.result_event(
+                        i + 1, error=str(e), stop_reason=f"refused: {e}"))
+                return steps, f"refused: {e}"
+            if repeat_guard and history and preview == list(
+                    history[-1].get("argv") or []):
+                # P2: the next planned argv repeats the previous step
+                # verbatim. Re-plan once with an anti-repeat nudge *before*
+                # executing anything; a second repeat stops honestly.
+                retry = _retry_after_repeat(
+                    config, request, cwd, client=client,
+                    min_confidence=min_confidence, history=history,
+                    max_steps=budget, max_history=max_history,
+                    temperature=temperature, step_index=i,
+                    ask_continue=ask_continue, prev_argv=preview,
+                    logger=logger, continue_threshold=bar,
+                    continue_threshold_source=bar_source)
+                if retry is None:
+                    reason = (
+                        f"stop: step {i+1} repeats step {i} "
+                        f"({' '.join(preview)}); not executing a duplicate")
+                    if logger is not None:
+                        logger.log(runlog.result_event(
+                            i + 1, preview, stop_reason=reason))
+                    return steps, reason
+                outcome, context, response, preview, action = retry
+            if action.risk in ("write", "destructive"):
+                approved = (False if on_confirm is None
+                            else bool(on_confirm(action, preview)))
+                if not approved:
+                    if logger is not None:
+                        logger.log(runlog.result_event(
+                            i + 1, preview, declined=True,
+                            stop_reason="declined by user"))
+                    return steps, "declined by user"
             if execute_fn is not None:
                 argv, rc, out, err = execute_fn(action, cwd)
             else:
                 res = _executor.execute(config, action, cwd)
                 argv, rc, out, err = res.argv, res.returncode, res.stdout, res.stderr
-            if history and list(argv) == list(history[-1].get("argv") or []):
-                # P2: step repeats the previous argv verbatim. Re-plan once
-                # with an anti-repeat nudge instead of executing a duplicate.
-                # Guarded by `repeat_guard`: unit fakes that pin identical
-                # plans across steps (FakeClient + canned execute_fn) keep
-                # the legacy behavior; live runs (and tests) opt in by
-                # passing repeat_guard=True.
-                retry = None
-                if repeat_guard:
-                    retry = _retry_after_repeat(
-                        config, request, cwd, client=client,
-                        min_confidence=min_confidence, history=history,
-                        max_steps=budget, max_history=max_history,
-                        temperature=temperature, step_index=i,
-                        ask_continue=ask_continue, prev_argv=list(argv),
-                        logger=logger, execute_fn=execute_fn)
-                if retry is None and repeat_guard:
-                    steps.append(StepOutcome(action, argv, rc, out, err))
-                    history.append(history_entry(
-                        i + 1, action, argv, rc, out, err))
-                    if logger is not None:
-                        logger.log(runlog.result_event(i + 1, argv, returncode=rc,
-                                                       stdout=out, stderr=err))
-                    return steps, (
-                        f"stop: step {i+1} repeats step {i} "
-                        f"({ ' '.join(argv)}); not executing a duplicate")
-                elif retry is not None:
-                    outcome, context, response, argv, rc, out, err, action = retry
             steps.append(StepOutcome(action, argv, rc, out, err))
             history.append(history_entry(i + 1, action, argv, rc, out, err))
             if logger is not None:
@@ -590,13 +609,14 @@ def dispatch_sequence(config: EnvConfig, request: str, cwd: str = ".", *,
 def _retry_after_repeat(config, request, cwd, *, client,
                         min_confidence, history, max_steps, max_history,
                         temperature, step_index, ask_continue, prev_argv,
-                        logger=None, execute_fn=None):
+                        logger=None, continue_threshold=None,
+                        continue_threshold_source=None):
     """P2 anti-repeat: re-plan step `step_index` once with an anti-repeat nudge.
 
-    Returns (outcome, context, response, argv, rc, out, err, action) for the
-    retry when it plans a *different* argv, else None (caller stops honestly
-    instead of executing a duplicate). The retry is executed through the
-    same path as a normal step (execute_fn or real executor).
+    Returns (outcome, context, response, preview_argv, action) when the retry
+    plans a different argv, else None (caller stops honestly). Nothing is
+    executed here: the caller resolves/executes the returned action exactly
+    once.
     """
     from hsom import executor as _executor
 
@@ -612,6 +632,8 @@ def _retry_after_repeat(config, request, cwd, *, client,
             step_index + 1, request, cwd, outcome, context,
             continue_asked=ask_continue,
             continue_value=continue_info(response),
+            continue_threshold=continue_threshold,
+            continue_threshold_source=continue_threshold_source,
             max_steps=max_steps, max_history=max_history,
             history_len=len(history), repeat_retry=True))
     if not outcome.ok or outcome.action is None:
@@ -623,13 +645,7 @@ def _retry_after_repeat(config, request, cwd, *, client,
         return None
     if argv == list(prev_argv):
         return None  # still repeats: stop honestly
-    if execute_fn is not None:
-        rc_out = execute_fn(action, cwd)
-        argv, rc, out, err = list(rc_out[0]), rc_out[1], rc_out[2], rc_out[3]
-    else:
-        res = _executor.execute(config, action, cwd)
-        argv, rc, out, err = list(res.argv), res.returncode, res.stdout, res.stderr
-    return outcome, context, response, argv, rc, out, err, action
+    return outcome, context, response, argv, action
 
 
 def _force_node(outcome: PlanOutcome, command: str, subcommand: str | None):

@@ -53,7 +53,7 @@ instructions_subcommand = "Which git subcommand does the request need: status, l
   [[command.subcommand]]
   name = "diff"
   description = "show uncommitted changes, e.g. 'show diff' or 'show diff stats'"
-  argv = ["git", "diff"]
+  argv = ["git", "diff", "{path:scope}"]
   risk = "read"
 
     [[command.subcommand.flag]]
@@ -87,7 +87,6 @@ instructions_subcommand = "Which git subcommand does the request need: status, l
     depth = 3
     glob = "*.py"
     question = "Which Python file does the request want to stage?"
-    stated_question = "Does the request name a specific Python file to stage?"
 
   [[command.subcommand]]
   name = "branch"

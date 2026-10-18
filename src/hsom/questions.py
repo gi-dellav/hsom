@@ -87,15 +87,17 @@ def build_questions(config: EnvConfig, cwd: str = ".", *,
 
     budget = config.max_steps if max_steps is None else max_steps
     step_no = step_index + 1
+    later_step = step_index > 0
 
     if allow_continue:
         instructions = (
             config.continue_question or CONTINUE_INSTRUCTIONS)
-        if history:
+        if later_step:
             done = _history_summary(history)
+            progress = f" Steps already completed: {done}." if done else ""
             instructions = (
                 f"{instructions} This is step {step_no} of at most {budget} "
-                f"for the request. Steps already completed: {done}. "
+                f"for the request.{progress} "
                 f"Answer yes only if a further step is still needed.")
         if repeat_hint:
             instructions = f"{instructions}{REPEAT_HINT_INSTRUCTIONS}"
@@ -106,11 +108,12 @@ def build_questions(config: EnvConfig, cwd: str = ".", *,
     cmd_criteria[RESERVED] = NONE_DESC
     l1_instructions = (config.command_question
                        or "What shell task is the user asking for?")
-    if history:
+    if later_step:
         done = _history_summary(history)
+        progress = f" Steps already completed: {done}." if done else ""
         l1_instructions = (
             f"{l1_instructions} This is step {step_no} of at most {budget} "
-            f"for the request. Steps already completed: {done}. "
+            f"for the request.{progress} "
             f"Pick the command for the NEXT step, not a repeat of a "
             f"completed step.")
     questions["__command__"] = Choice(

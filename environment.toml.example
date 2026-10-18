@@ -24,7 +24,7 @@ command_question = "What shell task is the user asking for?"
 name = "git"
 description = "version control operations like status, log, staging files"
 risk = "read"
-instructions_subcommand = "Which git subcommand does the request need: status, log, staging, or history search?"
+instructions_subcommand = "Which git subcommand does the request need: status, log, or staging?"
 # no base argv -> subcommand-layer none_of_the_above abstains
 
   [[command.subcommand]]
@@ -69,19 +69,6 @@ instructions_subcommand = "Which git subcommand does the request need: status, l
     depth = 3
     glob = "*.py"
     question = "Which Python file does the request want to stage?"
-    stated_question = "Does the request name a specific Python file to stage?"
-
-  [[command.subcommand]]
-  name = "grep"
-  description = "search commit history, e.g. 'find commits mentioning auth'"
-  argv = ["git", "log", "--grep={value}", "{path:scope}"]
-  risk = "read"
-
-    [[command.subcommand.path]]
-    name = "scope"
-    kind = "dirs"
-    optional = true
-    description = "directory to limit the history search to"
 
 [[command]]
 name = "ls"

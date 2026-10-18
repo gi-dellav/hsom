@@ -240,3 +240,37 @@ def test_continue_threshold_parsing(tmp_path):
         load_config(_write(tmp_path, BASE.replace(
             'model = "jev-latest"',
             'model = "jev-latest"\ncontinue_question = "' + "q" * 501 + '"')))
+
+
+def test_value_placeholder_only_allowed_in_flag_fragments(tmp_path):
+    bad = BASE.replace('argv = ["git", "status"]',
+                       'argv = ["git", "status", "{value}"]')
+    with pytest.raises(ConfigError, match="only allowed in flag"):
+        load_config(_write(tmp_path, bad))
+
+
+def test_optional_slot_must_be_referenced_in_argv(tmp_path):
+    body = """\
+[[command]]
+name = "cp"
+description = "copy"
+argv = ["cp", "{path:src}"]
+
+  [[command.path]]
+  name = "src"
+  kind = "files"
+
+  [[command.path]]
+  name = "unused"
+  kind = "files"
+  optional = true
+"""
+    with pytest.raises(ConfigError, match="not referenced in 'argv'"):
+        load_config(_write(tmp_path, body))
+
+
+def test_shipped_environment_example_loads():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    cfg = load_config(str(root / "environment.toml.example"))
+    assert cfg.get_command("git") is not None

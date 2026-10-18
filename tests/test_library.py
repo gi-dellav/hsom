@@ -235,7 +235,6 @@ def test_eval_never_executes(workdir, tmp_path, monkeypatch):
 
 
 def test_eval_accepts_cases_and_multistep(workdir):
-    import types
     from hsom.eval import EvalCase
     calls = {"n": 0}
 
@@ -292,3 +291,33 @@ def test_context_manager_owns_client(monkeypatch):
     with h as hh:
         assert hh._owned_client is not None
     assert closed.get("yes") is True
+
+
+def test_harness_forwards_api_key_and_timeout(monkeypatch, workdir):
+    """Direct plan()/run() must honor constructor api_key/timeout (not only `with`)."""
+    from hsom import client as client_mod
+
+    seen = {}
+    closed = []
+
+    class FakeClient:
+        def system_one(self, **kw):
+            return FakeResp({"__command__": FakeChoice(
+                "pytest", {"pytest": 1.0}, 0.99)})
+
+        def close(self):
+            closed.append(True)
+
+    def fake_create(cfg, **kw):
+        seen.update(kw)
+        return FakeClient()
+
+    monkeypatch.setattr(client_mod, "create_client", fake_create)
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+    h = Harness(env=sample_config(), cwd=workdir, api_key="SECRET", timeout=7)
+    outcome = h.plan("run tests")
+    assert outcome.ok
+    assert seen == {"api_key": "SECRET", "timeout": 7}
+    assert closed == [True]

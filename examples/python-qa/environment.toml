@@ -96,7 +96,6 @@ risk = "read"
   depth = 2
   glob = "*.py"
   question = "Which Python script does the request want to run?"
-  stated_question = "Does the request name a specific Python script to run?"
 
 # ---------------------------------------------------------------- ls
 [[command]]

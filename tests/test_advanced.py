@@ -282,8 +282,6 @@ def test_repeat_guard_retries_once_then_stops(config, tmp_path):
     stops honestly without executing a duplicate."""
     import types
 
-    from hsom.dispatcher import PlanOutcome
-
     plans = iter([
         ("pytest", None, 0.9),   # step 1
         ("pytest", None, 0.9),   # step 2: repeats step 1
@@ -295,20 +293,21 @@ def test_repeat_guard_retries_once_then_stops(config, tmp_path):
         def system_one(self, **kw):
             if "hint" in kw.get("state", {}):
                 seen_hints.append(kw["state"]["hint"])
-            cmd, sub, conf = next(plans)
-            a = PlannedAction(command=cmd, subcommand=sub, confidence=conf,
-                              risk="read")
+            cmd, _sub, conf = next(plans)
             answers = {"__command__": FakeChoice(cmd, {cmd: 1.0}, conf),
                        "__continue__": FakeNoul(0.9)}
             return types.SimpleNamespace(answers=answers)
 
     def ok_exec(action, cwd):
+        executed.append(list(action.describe().split()))
         return (["pytest", "-q"], 0, "ok", "")
 
+    executed = []
     steps, reason = dispatch_sequence(
         config, "run tests", str(tmp_path), client=FakeClient(),
         execute_fn=ok_exec, max_steps=3, repeat_guard=True)
-    assert len(steps) == 2
+    assert len(steps) == 1
+    assert executed == [["pytest"]]
     assert "repeats step 1" in reason
     assert len(seen_hints) == 1  # exactly one retry with the nudge
 
@@ -337,15 +336,17 @@ def test_repeat_guard_accepts_redirected_retry(config, tmp_path):
             return types.SimpleNamespace(answers=answers)
     FakeClient.last_node = []
 
+    executed = []
+
     def scripted_exec(action, cwd):
         # resolve the argv the model *would* have planned on this call:
         # FakeClient answers carry no slots, so map node -> canned argv.
         node = FakeClient.last_node[-1]
         argv = {"ruff.check": ["ruff", "check"],
                 "ruff.format": ["ruff", "format", "--check"]}[node]
+        executed.append(argv)
         return (argv, 0, "ok", "")
 
-    import dataclasses
     from hsom.config import Command, Subcommand
     cfg = EnvConfig(
         model="jev-latest", min_confidence=0.5, timeout=60.0,
@@ -363,7 +364,49 @@ def test_repeat_guard_accepts_redirected_retry(config, tmp_path):
         execute_fn=scripted_exec, max_steps=2, repeat_guard=True)
     assert [tuple(s.argv) for s in steps] == [
         ("ruff", "check"), ("ruff", "format", "--check")]
+    # the repeated step was re-planned before execution; only two commands ran
+    assert executed == [["ruff", "check"], ["ruff", "format", "--check"]]
     assert reason == "max_steps reached"
+
+
+def test_dispatch_sequence_declines_write_by_default(tmp_path):
+    """P8: write/destructive steps are fail-closed without on_confirm."""
+    import types
+
+    cfg = sample_config(default_risk="write")
+
+    class FakeClient:
+        def system_one(self, **kw):
+            return types.SimpleNamespace(answers={
+                "__command__": FakeChoice("pytest", {"pytest": 1.0}, 0.99)})
+
+    executed = []
+    steps, reason = dispatch_sequence(
+        cfg, "run tests", str(tmp_path), client=FakeClient(),
+        execute_fn=lambda a, c: executed.append(a) or (["pytest", "-q"], 0, "", ""),
+        max_steps=1)
+    assert steps == [] and reason == "declined by user"
+    assert executed == []
+
+
+def test_dispatch_sequence_on_confirm_allows_write(tmp_path):
+    import types
+
+    cfg = sample_config(default_risk="write")
+
+    class FakeClient:
+        def system_one(self, **kw):
+            return types.SimpleNamespace(answers={
+                "__command__": FakeChoice("pytest", {"pytest": 1.0}, 0.99)})
+
+    seen = []
+    steps, reason = dispatch_sequence(
+        cfg, "run tests", str(tmp_path), client=FakeClient(),
+        execute_fn=lambda a, c: (["pytest", "-q"], 0, "", ""),
+        max_steps=1, on_confirm=lambda action, argv: seen.append(
+            (action.risk, list(argv))) or True)
+    assert reason == "max_steps reached" and len(steps) == 1
+    assert seen == [("write", ["pytest", "-q"])]
 
 
 def test_dispatch_clips_history_and_asks_continue(config, tmp_path):
@@ -390,6 +433,30 @@ def test_dispatch_clips_history_and_asks_continue(config, tmp_path):
     assert "__continue__" not in seen["questions"]
 
 
+def test_max_history_zero_keeps_step_aware_prompts(config, tmp_path):
+    """Clipping all history entries must not drop step-awareness (P1)."""
+    seen = {}
+
+    class Resp:
+        answers = {"__command__": FakeChoice("pytest", {"pytest": 1.0}, 0.99)}
+
+    class FakeClient:
+        def system_one(self, **kw):
+            seen["state"] = kw["state"]
+            seen["questions"] = kw["questions"]
+            return Resp()
+
+    hist = [{"step": 1, "node": "pytest", "describe": "pytest",
+             "argv": ["pytest", "-q"]}]
+    dispatch(config, "run tests", str(tmp_path), client=FakeClient(),
+             history=hist, max_steps=3, max_history=0, step_index=1,
+             allow_continue=True)
+    assert "history" not in seen["state"]
+    l1 = seen["questions"]["__command__"].instructions
+    assert "step 2 of at most 3" in l1
+    assert "NEXT step" in l1
+
+
 def _cli_args(*argv):
     from hsom import cli
     return cli.build_parser().parse_args(list(argv))
@@ -402,11 +469,15 @@ def test_cli_run_sequence_stops_when_jev_declines(monkeypatch, config):
 
     calls = {"n": 0}
     answers = iter([True, False])
+    plans = iter([
+        PlannedAction(command="pytest", subcommand=None, confidence=0.9,
+                      risk="read"),
+        PlannedAction(command="git", subcommand="status", confidence=0.9,
+                      risk="read"),
+    ])
 
     def fake_dispatch(cfg, request, cwd=".", **kw):
-        a = PlannedAction(command="pytest", subcommand=None, confidence=0.9,
-                          risk="read")
-        return PlanOutcome(True, a, "ok", 0.9), {}, {}, object()
+        return PlanOutcome(True, next(plans), "ok", 0.9), {}, {}, object()
 
     monkeypatch.setattr(cli, "dispatch", fake_dispatch)
     monkeypatch.setattr(cli, "continue_requested", lambda resp, threshold=None: next(answers))
@@ -420,6 +491,101 @@ def test_cli_run_sequence_stops_when_jev_declines(monkeypatch, config):
     args = _cli_args("run tests", "--max-steps", "5")
     rc = cli.run_sequence(config, args, 5)
     assert rc == cli.EXIT_OK and calls["n"] == 2
+
+
+def _repeat_outcome(command, subcommand=None, confidence=0.9):
+    return PlannedAction(command=command, subcommand=subcommand,
+                         confidence=confidence, risk="read")
+
+
+def test_cli_sequence_repeat_guard_skips_duplicate(monkeypatch, config):
+    """P2 in the CLI: a repeated plan is re-planned, never executed twice."""
+    from hsom import cli
+    import hsom.dispatcher as disp
+    from hsom.dispatcher import PlanOutcome
+    from hsom.executor import ExecutionResult
+
+    script = iter([
+        PlanOutcome(True, _repeat_outcome("pytest"), "ok", 0.9),  # step 1
+        PlanOutcome(True, _repeat_outcome("pytest"), "ok", 0.9),  # repeats
+        PlanOutcome(True, _repeat_outcome("pytest"), "ok", 0.9),  # still repeats
+    ])
+
+    def fake_dispatch(cfg, request, cwd=".", **kw):
+        return next(script), {}, {}, object()
+
+    monkeypatch.setattr(cli, "dispatch", fake_dispatch)
+    monkeypatch.setattr(disp, "dispatch", fake_dispatch)
+    monkeypatch.setattr(cli, "continue_requested",
+                        lambda resp, threshold=None: True)
+    executed = []
+    monkeypatch.setattr(
+        cli, "execute",
+        lambda cfg, a, cwd: executed.append(a) or ExecutionResult(
+            argv=["pytest", "-q"], returncode=0, stdout="", stderr=""))
+
+    rc = cli.run_sequence(config, _cli_args(
+        "run tests", "--max-steps", "3"), 3)
+    assert rc == cli.EXIT_ABSTAIN
+    assert len(executed) == 1  # only step 1 actually ran
+
+
+def test_cli_sequence_repeat_guard_redirects(monkeypatch, config):
+    """P2 redirect: the retried (different) step runs exactly once."""
+    from hsom import cli
+    import hsom.dispatcher as disp
+    from hsom.dispatcher import PlanOutcome
+    from hsom.executor import ExecutionResult, resolve_argv
+
+    script = iter([
+        PlanOutcome(True, _repeat_outcome("pytest"), "ok", 0.9),  # step 1
+        PlanOutcome(True, _repeat_outcome("pytest"), "ok", 0.9),  # repeats
+        PlanOutcome(True, _repeat_outcome("git", "status"), "ok", 0.9),  # retry
+    ])
+
+    def fake_dispatch(cfg, request, cwd=".", **kw):
+        return next(script), {}, {}, object()
+
+    monkeypatch.setattr(cli, "dispatch", fake_dispatch)
+    monkeypatch.setattr(disp, "dispatch", fake_dispatch)
+    monkeypatch.setattr(cli, "continue_requested",
+                        lambda resp, threshold=None: True)
+    executed = []
+
+    def fake_exec(cfg, action, cwd):
+        argv = resolve_argv(cfg, action, cwd)
+        executed.append(argv)
+        return ExecutionResult(argv=argv, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(cli, "execute", fake_exec)
+    rc = cli.run_sequence(config, _cli_args(
+        "run tests", "--max-steps", "2"), 2)
+    assert rc == cli.EXIT_OK
+    assert executed == [["pytest", "-q"], ["git", "status"]]
+
+
+def test_cli_midchain_abstention_exits_3(monkeypatch, config):
+    from hsom import cli
+    from hsom.dispatcher import PlanOutcome
+    from hsom.executor import ExecutionResult
+
+    outcomes = iter([
+        PlanOutcome(True, _repeat_outcome("pytest"), "ok", 0.9),
+        PlanOutcome(False, None,
+                    "confidence 0.20 below minimum 0.50 (risk read)", 0.2),
+    ])
+    monkeypatch.setattr(
+        cli, "dispatch", lambda *a, **k: (next(outcomes), {}, {}, object()))
+    monkeypatch.setattr(cli, "continue_requested",
+                        lambda resp, threshold=None: True)
+    monkeypatch.setattr(
+        cli, "execute",
+        lambda cfg, a, cwd: ExecutionResult(
+            argv=["pytest", "-q"], returncode=0, stdout="", stderr=""))
+
+    rc = cli.run_sequence(config, _cli_args(
+        "run tests", "--max-steps", "3"), 3)
+    assert rc == cli.EXIT_ABSTAIN
 
 
 def test_cli_max_steps_one_never_asks_continue(monkeypatch, config):
@@ -598,7 +764,6 @@ def test_cli_surfaces_jev_error_as_distinct_exit(monkeypatch, tmp_path):
 
 
 def test_cli_sequence_surfaces_jev_error_as_distinct_exit(monkeypatch, tmp_path, capsys):
-    import httpx2
     from typesafe_sdk import TypeSafeAPIConnectionError
 
     from hsom import cli

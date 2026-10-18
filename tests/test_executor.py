@@ -46,7 +46,7 @@ def test_execute_dry_run_and_real(config, workdir, tmp_path):
 
 
 def test_multipath_and_valued_flag(config, tmp_path):
-    from hsom.config import Command, Subcommand, Flag, PathSlot
+    from hsom.config import Command, Flag, PathSlot
     cfg_cmd = Command(
         name="cp", description="copy", argv=("cp", "{path:src}", "{path:dst}"),
         paths=(PathSlot(name="src", kind="files"),
@@ -74,3 +74,30 @@ def test_multipath_and_valued_flag(config, tmp_path):
                       flag_values={"--format": "yaml"})
     with pytest.raises(ExecutionError, match="not allowlisted"):
         resolve_argv(fcfg, a, str(tmp_path))
+
+
+def test_missing_valued_flag_value_raises_execution_error(config, workdir):
+    from hsom.config import Command, EnvConfig, Flag
+    cfg = EnvConfig(commands=(Command(
+        name="ls", description="l", argv=("ls",),
+        flags=(Flag("--format", "fmt", ("--format={value}",),
+                    values=("json", "plain")),),
+    ),))
+    a = PlannedAction(command="ls", subcommand=None, flags=("--format",),
+                      confidence=0.9)
+    with pytest.raises(ExecutionError, match="requires a value"):
+        resolve_argv(cfg, a, workdir)
+
+
+def test_execute_replaces_invalid_utf8(tmp_path):
+    import sys
+
+    from hsom.config import Command, EnvConfig
+    cfg = EnvConfig(commands=(Command(
+        name="emit", description="emit invalid utf-8",
+        argv=(sys.executable, "-c",
+              "import sys; sys.stdout.buffer.write(b'\\xff')")),))
+    a = PlannedAction(command="emit", subcommand=None, confidence=0.9)
+    res = execute(cfg, a, str(tmp_path))
+    assert res.returncode == 0
+    assert "\ufffd" in res.stdout

@@ -420,6 +420,12 @@ def _finalize_paths(d: dict, ctx: str, argv: tuple[str, ...] | None,
         seen.add(slot.name)
         slots.append(slot)
 
+    if argv is not None:
+        for t in argv:
+            if VALUE_PLACEHOLDER in t:
+                raise ConfigError(
+                    f"{ctx}: '{{value}}' is only allowed in flag 'argv_fragment'")
+
     if slots:
         if takes_path or d.get("path_kind") is not None or d.get("path_optional") is not None:
             raise ConfigError(f"{ctx}: use either [[path]] tables or takes_path/path_kind/path_optional, not both")
@@ -439,11 +445,9 @@ def _finalize_paths(d: dict, ctx: str, argv: tuple[str, ...] | None,
                 if r not in by_name:
                     raise ConfigError(f"{ctx}: '{{path:{r}}}' has no [[path]] slot named '{r}'")
             for s in slots:
-                if not s.optional and s.name not in refs and (s.name != "path" or None not in
-                        {r for t in argv for r in _slot_refs_in_token(t)}):
-                    # required slot must appear in argv
-                    if s.name not in refs and not (s.name == "path" and "path" in refs):
-                        raise ConfigError(f"{ctx}: required path slot '{s.name}' missing from 'argv'")
+                if s.name not in refs:
+                    raise ConfigError(
+                        f"{ctx}: path slot '{s.name}' is not referenced in 'argv'")
         return tuple(slots)
 
     # legacy desugar

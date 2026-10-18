@@ -43,6 +43,14 @@ def test_happy_path_status(config):
     assert out.action.risk == "read"
 
 
+def test_unknown_subcommand_abstains(config):
+    ans = _cmd() | {"__subcommand__:git": FakeChoice(
+        "evil", {"evil": 1.0}, 0.9)}
+    out = plan_from_answers(config, ans, CTX)
+    assert not out.ok and out.action is None
+    assert "unknown subcommand 'git evil'" in out.reason
+
+
 def test_flag_included_when_noul_yes(config):
     ans = (_cmd() | {"__subcommand__:git": FakeChoice("log", {"log": 0.9}, 0.9),
                      "flag.git.log.--oneline": FakeNoul(0.95)})

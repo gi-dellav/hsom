@@ -20,14 +20,14 @@ input = "show recent commits as json"
 expected = "git log --format=json"
 
 [[test]]
-name = "stage readme"
-input = "stage the readme python file"
-expected = "git add README.py"
+name = "stage main"
+input = "stage the main python file"
+expected = "git add main.py"
 
 [[test]]
 name = "stage then status"
-input = "stage readme then show status"
-expected = ["git add README.py", "git status"]   # multi-step: max_steps = 2
+input = "stage the main python file then show status"
+expected = ["git add main.py", "git status"]   # multi-step: max_steps = 2
 
 [[test]]
 name = "nonsense abstains"

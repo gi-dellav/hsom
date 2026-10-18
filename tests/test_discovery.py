@@ -74,3 +74,17 @@ def test_validate_slot_subpaths(tmp_path):
         validate_selection("../evil", slot, cwd)
     with pytest.raises(ValueError, match="does not exist|not in current"):
         validate_selection("nope.py", slot, cwd)
+
+
+def test_dash_prefixed_names_are_never_candidates(tmp_path):
+    """A path token starting with '-' would be parsed as an option."""
+    (tmp_path / "-rf").write_text("x")
+    (tmp_path / "--help").mkdir()
+    (tmp_path / "ok.txt").write_text("x")
+    cwd = str(tmp_path)
+    assert list_candidates("both", cwd) == ["ok.txt"]
+    assert discover(PathSlot(name="s", kind="both"), cwd) == ["ok.txt"]
+    with pytest.raises(ValueError, match="may not start with '-'"):
+        validate_selection("-rf", "both", cwd)
+    with pytest.raises(ValueError, match="may not start with '-'"):
+        validate_selection("-rf", PathSlot(name="s", kind="files"), cwd)

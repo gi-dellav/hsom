@@ -74,6 +74,21 @@ def test_step_two_prompts_name_progress(config, workdir):
     assert "git add a" in cont
 
 
+def test_step_two_prompt_without_history(config, workdir):
+    """Step 2+ stays step-aware even when history is clipped to zero."""
+    from hsom.questions import CONTINUE_QID
+    q, _ = build_questions(
+        config, workdir, allow_continue=True, step_index=1, history=None,
+        max_steps=3)
+    l1 = q["__command__"].instructions
+    assert "step 2 of at most 3" in l1
+    assert "NEXT step" in l1
+    assert "Steps already completed" not in l1
+    cont = q[CONTINUE_QID].instructions
+    assert "step 2 of at most 3" in cont
+    assert "Steps already completed" not in cont
+
+
 def test_repeat_hint_appends_nudge(config, workdir):
     from hsom.questions import CONTINUE_QID, REPEAT_HINT_INSTRUCTIONS
     hist = [{"step": 1, "node": "git.add", "describe": "git add a",

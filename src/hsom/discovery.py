@@ -24,7 +24,7 @@ def list_candidates(kind: str, cwd: str = ".") -> list[str]:
     with os.scandir(cwd) as it:
         for entry in it:
             name = entry.name
-            if name.startswith("."):
+            if name.startswith(".") or name.startswith("-"):
                 continue
             try:
                 if entry.is_dir(follow_symlinks=False):
@@ -76,6 +76,10 @@ def discover(slot, cwd: str = ".") -> list[str]:
         for entry in entries:
             name = entry.name
             rel = f"{rel_prefix}/{name}" if rel_prefix else name
+            if rel.startswith("-"):
+                # A token starting with '-' would be parsed as an option by
+                # the executed command, bypassing the argv allowlist.
+                continue
             if not include_dotfiles and (name.startswith(".") or _has_dot_segment(rel)):
                 continue
             try:
@@ -125,10 +129,13 @@ def validate_selection(name: str, kind_or_slot, cwd: str = ".") -> str:
     segs = [s for s in norm.split("/") if s not in ("", ".")]
     if not segs or any(s == ".." for s in segs):
         raise ValueError(f"invalid path selection: {name!r}")
+    if segs[0].startswith("-"):
+        # The substituted token would start with '-' and be parsed as an
+        # option by the target command.
+        raise ValueError(f"path selection may not start with '-': {name!r}")
 
     if isinstance(kind_or_slot, str):
         kind = kind_or_slot
-        include_dotfiles = False
         if len(segs) != 1:
             raise ValueError(f"invalid path selection: {name!r}")
         if segs[0].startswith("."):
