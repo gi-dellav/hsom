@@ -1,5 +1,6 @@
 [meta]
-model = "jev-latest"
+# Pinned; OpenRouter resolves this to typesafe/jev-1.13-20260917.
+model = "jev-1.13"
 min_confidence = 0.5
 timeout = 60
 # Default provider for this example: OpenRouter System One API.
@@ -9,7 +10,7 @@ default_risk = "read"
 max_steps = 1
 max_history = 5
 temperature = 0.0
-command_question = "What Python QA task is the user asking for: run tests, lint, format-check, run a script, or list files?"
+command_question = "What Python QA task is the user asking for: testing, linting, format checking, running a script, or listing files?"
   [meta.risk_thresholds]
   read = 0.5
   write = 0.7
@@ -18,14 +19,14 @@ command_question = "What Python QA task is the user asking for: run tests, lint,
 # ---------------------------------------------------------------- pytest
 [[command]]
 name = "pytest"
-description = "run the Python test suite, e.g. 'run tests', 'run tests with short traceback', or as the second step after linting like 'lint then run tests'"
+description = "run the project's Python test suite"
 argv = ["pytest", "-q"]
 # Tests import and execute user-controlled code, so this is not read-only.
 risk = "write"
 
   [[command.flag]]
   name = "-x"
-  description = "stop after the first failure, e.g. 'run tests stopping at first failure'"
+  description = "stop after the first failure"
   argv_fragment = ["-x"]
   question = "Does the user want to stop after the first failure?"
 
@@ -43,13 +44,13 @@ risk = "write"
 # ---------------------------------------------------------------- ruff
 [[command]]
 name = "ruff"
-description = "lint or format-check Python code, e.g. 'lint the code', 'check formatting', or as the first step of a two-part task like 'lint then run tests'"
+description = "lint or format-check Python code"
 risk = "read"
 instructions_subcommand = "Does the request need a lint check or a format check?"
 
   [[command.subcommand]]
   name = "check"
-  description = "lint Python code, e.g. 'lint the code', 'lint src/app.py', or the first half of 'lint then run tests'"
+  description = "lint Python code"
   argv = ["ruff", "check", "{path:target}"]
   risk = "read"
 
@@ -66,7 +67,7 @@ instructions_subcommand = "Does the request need a lint check or a format check?
 
   [[command.subcommand]]
   name = "format"
-  description = "format-check Python code without writing, e.g. 'check formatting'"
+  description = "format-check Python code without writing"
   argv = ["ruff", "format", "--check", "{path:target}"]
   risk = "read"
 
@@ -84,7 +85,7 @@ instructions_subcommand = "Does the request need a lint check or a format check?
 # ---------------------------------------------------------------- python
 [[command]]
 name = "python"
-description = "run a Python script, e.g. 'run the app script'"
+description = "run a Python script"
 argv = ["python", "{path:script}"]
 # Runs arbitrary user code, so this is not read-only.
 risk = "write"
@@ -102,7 +103,7 @@ risk = "write"
 # ---------------------------------------------------------------- ls
 [[command]]
 name = "ls"
-description = "list directory contents, e.g. 'list files here' or 'list files in tests'"
+description = "list directory contents"
 argv = ["ls", "{path:target}"]
 risk = "read"
 

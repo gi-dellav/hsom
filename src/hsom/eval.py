@@ -16,6 +16,9 @@ Schema (eval.toml):
   continue_threshold = 0.4        # optional; overrides the __continue__ gate bar
   repeat_guard = true             # optional; re-plan a repeated argv (default
                                   # false so canned multi-step fixtures repeat)
+  exclude_reason = "..."          # optional; probe excluded from the headline
+  wrong_plan = true               # optional; excluded because the plan is wrong
+                                  # (requires exclude_reason)
 
   [[test]]
   name = "stage then status"
@@ -38,6 +41,7 @@ from __future__ import annotations
 
 import os
 import shlex
+import time
 from dataclasses import dataclass, field
 
 try:
@@ -61,6 +65,12 @@ class EvalCase:
     min_confidence: float | None = None
     continue_threshold: float | None = None
     repeat_guard: bool | None = None
+    exclude_reason: str | None = None
+    wrong_plan: bool = False
+
+    @property
+    def excluded(self) -> bool:
+        return self.exclude_reason is not None
 
     @property
     def steps(self) -> int:
@@ -76,6 +86,11 @@ class EvalTestResult:
     confidence: float = 0.0
     risk: str | None = None
     error_kind: str | None = None
+    model: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    latency_ms: float | None = None
+    logprob_fallbacks: int = 0
 
 
 @dataclass(frozen=True)
@@ -145,7 +160,8 @@ def _parse_case(d: dict, idx: int, default_name: str, path: str,
     if not isinstance(d, dict):
         raise EvalError(f"{ctx}: test must be a table")
     allowed = {"name", "input", "expected", "expect_abstain", "cwd",
-               "min_confidence", "continue_threshold", "repeat_guard"}
+               "min_confidence", "continue_threshold", "repeat_guard",
+               "exclude_reason", "wrong_plan"}
     for k in d:
         if k not in allowed:
             raise EvalError(f"{ctx}: unknown key '{k}'")
@@ -223,10 +239,21 @@ def _parse_case(d: dict, idx: int, default_name: str, path: str,
     else:
         guard = meta_guard
 
+    exclude_reason = d.get("exclude_reason")
+    if exclude_reason is not None:
+        if not isinstance(exclude_reason, str) or not exclude_reason.strip():
+            raise EvalError(f"{ctx}: 'exclude_reason' must be a non-empty string")
+        exclude_reason = exclude_reason.strip()
+
+    wrong_plan = _opt_bool(d, "wrong_plan", False, ctx)
+    if wrong_plan and exclude_reason is None:
+        raise EvalError(f"{ctx}: 'wrong_plan = true' requires 'exclude_reason'")
+
     return EvalCase(name=name, input=request, expected=expected,
                     expected_str=expected_str, expect_abstain=expect_abstain,
                     cwd=cwd, min_confidence=conf, continue_threshold=cont,
-                    repeat_guard=guard)
+                    repeat_guard=guard, exclude_reason=exclude_reason,
+                    wrong_plan=wrong_plan)
 
 
 def _opt_cwd(d: dict, ctx: str) -> str | None:
@@ -257,6 +284,17 @@ def _opt_threshold(d: dict, ctx: str, key: str = "min_confidence") -> float | No
     return float(v)
 
 
+def _response_meta(response) -> tuple[str | None, int | None, int | None]:
+    if response is None:
+        return None, None, None
+    usage = getattr(response, "usage", None)
+    return (
+        getattr(response, "model", None),
+        getattr(usage, "input_tokens", None),
+        getattr(usage, "output_tokens", None),
+    )
+
+
 def run_eval(config, cases: list[EvalCase], base_cwd: str = ".", *,
              client=None, min_confidence: float | None = None,
              temperature: float | None = None,
@@ -274,6 +312,10 @@ def run_eval(config, cases: list[EvalCase], base_cwd: str = ".", *,
     multi-step fixtures may repeat an identical argv. Set ``[meta]
     repeat_guard = true`` or a per-test ``repeat_guard`` to test the live
     behavior, which re-plans once and then stops before executing a duplicate.
+
+    Results carry model/usage/latency metadata when the provider reports it.
+    Cases with an ``exclude_reason`` are still run; callers decide whether to
+    include them in a headline denominator.
     """
     from hsom.dispatcher import dispatch, dispatch_sequence
     from hsom.executor import ExecutionError, resolve_argv
@@ -294,15 +336,38 @@ def run_eval(config, cases: list[EvalCase], base_cwd: str = ".", *,
         actual: tuple[tuple[str, ...], ...] | None = None
         conf: float = 0.0
         risk: str | None = None
+        response = None
+        steps: list = []
+        started = time.perf_counter()
+
+        def meta() -> dict:
+            model, in_tok, out_tok = _response_meta(response)
+            if steps:
+                models = [s.model for s in steps if s.model]
+                model = model or (models[0] if models else None)
+                in_vals = [s.input_tokens for s in steps if s.input_tokens is not None]
+                out_vals = [s.output_tokens for s in steps if s.output_tokens is not None]
+                if in_vals:
+                    in_tok = sum(in_vals)
+                if out_vals:
+                    out_tok = sum(out_vals)
+            return {
+                "model": model,
+                "input_tokens": in_tok,
+                "output_tokens": out_tok,
+                "latency_ms": (time.perf_counter() - started) * 1000.0,
+            }
+
         try:
             if case.expect_abstain:
-                outcome, _q, _c, _r = dispatch(
+                outcome, _q, _c, response = dispatch(
                     config, case.input, cwd, client=client, min_confidence=bar,
                     max_steps=1, temperature=temperature)
                 if not outcome.ok or outcome.action is None:
-                    results.append(EvalTestResult(case, True, None,
-                                                  f"abstained as expected: {outcome.reason}",
-                                                  confidence=outcome.confidence))
+                    results.append(EvalTestResult(
+                        case, True, None,
+                        f"abstained as expected: {outcome.reason}",
+                        confidence=outcome.confidence, **meta()))
                     continue
                 action = outcome.action
                 try:
@@ -312,17 +377,18 @@ def run_eval(config, cases: list[EvalCase], base_cwd: str = ".", *,
                 results.append(EvalTestResult(
                     case, False, actual,
                     f"expected abstention but planned '{_fmt(actual)}'",
-                    confidence=action.confidence, risk=action.risk))
+                    confidence=action.confidence, risk=action.risk, **meta()))
                 continue
 
             if n == 1:
-                outcome, _q, _c, _r = dispatch(
+                outcome, _q, _c, response = dispatch(
                     config, case.input, cwd, client=client, min_confidence=bar,
                     max_steps=1, temperature=temperature)
                 if not outcome.ok or outcome.action is None:
-                    results.append(EvalTestResult(case, False, None,
-                                                  f"abstained: {outcome.reason}",
-                                                  confidence=outcome.confidence))
+                    results.append(EvalTestResult(
+                        case, False, None,
+                        f"abstained: {outcome.reason}",
+                        confidence=outcome.confidence, **meta()))
                     continue
                 action = outcome.action
                 actual = (tuple(resolve_argv(config, action, cwd)),)
@@ -334,24 +400,26 @@ def run_eval(config, cases: list[EvalCase], base_cwd: str = ".", *,
                     continue_threshold=cont_bar, repeat_guard=guard,
                     on_confirm=lambda action, argv: True)
                 if not steps:
-                    results.append(EvalTestResult(case, False, None, reason))
+                    results.append(EvalTestResult(
+                        case, False, None, reason, **meta()))
                     continue
                 actual = tuple(tuple(s.argv) for s in steps)
                 conf = min(s.action.confidence for s in steps)
                 risk = steps[-1].action.risk
         except ExecutionError as e:
-            results.append(EvalTestResult(case, False, None, f"refused: {e}",
-                                          error_kind="refused"))
+            results.append(EvalTestResult(
+                case, False, None, f"refused: {e}", error_kind="refused",
+                **meta()))
             continue
         except TypeSafeError as e:
-            results.append(EvalTestResult(case, False, None,
-                                          f"Jev call failed: {e}",
-                                          error_kind="provider"))
+            results.append(EvalTestResult(
+                case, False, None, f"Jev call failed: {e}",
+                error_kind="provider", **meta()))
             continue
         except Exception as e:
-            results.append(EvalTestResult(case, False, None,
-                                          f"Jev call failed: {e}",
-                                          error_kind="internal"))
+            results.append(EvalTestResult(
+                case, False, None, f"Jev call failed: {e}",
+                error_kind="internal", **meta()))
             continue
 
         assert actual is not None
@@ -360,15 +428,15 @@ def run_eval(config, cases: list[EvalCase], base_cwd: str = ".", *,
             results.append(EvalTestResult(
                 case, False, actual,
                 f"expected {n} step(s) but Jev produced {len(actual)}{detail}",
-                confidence=conf, risk=risk))
+                confidence=conf, risk=risk, **meta()))
         elif actual == case.expected:
-            results.append(EvalTestResult(case, True, actual, "ok",
-                                          confidence=conf, risk=risk))
+            results.append(EvalTestResult(
+                case, True, actual, "ok", confidence=conf, risk=risk, **meta()))
         else:
             results.append(EvalTestResult(
                 case, False, actual,
                 f"expected '{_fmt(case.expected)}' got '{_fmt(actual)}'",
-                confidence=conf, risk=risk))
+                confidence=conf, risk=risk, **meta()))
     passed = sum(1 for r in results if r.passed)
     return EvalSummary(total=len(results), passed=passed,
                        failed=len(results) - passed, results=tuple(results))

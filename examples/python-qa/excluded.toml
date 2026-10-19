@@ -1,0 +1,73 @@
+# Probes excluded from the python-qa regression suite.
+# Run them with `python benchmark.py run --suite python-qa --include-excluded`
+# and report both denominators.
+
+[[test]]
+name = "build green"
+input = "is the build green?"
+expected = "pytest -q"
+exclude_reason = "wrong-but-stable: abstains below the read threshold while the stable twin is kept in the suite"
+wrong_plan = true
+
+[[test]]
+name = "smoke test app"
+input = "smoke-test the app"
+expected = "pytest -q"
+exclude_reason = "input-fragile: pytest-vs-python routing is defensible either way"
+wrong_plan = false
+
+[[test]]
+name = "failure summary only"
+input = "run tests and show only the failure summary"
+expected = "pytest -q --tb=no"
+exclude_reason = "wrong-but-stable: drops the requested --tb=no flag"
+wrong_plan = true
+
+[[test]]
+name = "detailed tests listing"
+input = "list tests in detail"
+expected = "ls tests"
+exclude_reason = "unsupported detail flag: the allowlist has no long-listing flag, so the base listing is the honest degradation"
+wrong_plan = false
+
+[[test]]
+name = "verify code"
+input = "verify the code"
+expected = "ruff check"
+exclude_reason = "input-fragile: a single-word synonym without a file anchor abstains"
+wrong_plan = true
+
+[[test]]
+name = "scrutinize code"
+input = "scrutinize the code"
+expected = "ruff check"
+exclude_reason = "input-fragile: a single-word synonym without a file anchor abstains"
+wrong_plan = true
+
+[[test]]
+name = "look over code"
+input = "look over the code"
+expected = "ruff check"
+exclude_reason = "input-fragile: a single-word synonym without a file anchor abstains"
+wrong_plan = true
+
+[[test]]
+name = "lint test file vague"
+input = "lint the test file"
+expected = "ruff check tests/test_app.py"
+exclude_reason = "wrong-but-stable: the vague file reference does not resolve to the test file"
+wrong_plan = true
+
+[[test]]
+name = "run app vague"
+input = "run the app"
+expected = "python src/app.py"
+exclude_reason = "wrong-but-stable: the script slot needs the filename spelled out"
+wrong_plan = true
+
+[[test]]
+name = "cross command chain"
+input = "run ruff check then run tests"
+expected = ["ruff check", "pytest -q"]
+exclude_reason = "wrong-but-stable: cross-command chains abstain at the command layer"
+wrong_plan = true

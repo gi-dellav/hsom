@@ -1,0 +1,11 @@
+as_of = "2026-10-18"
+currency = "USD"
+source = "https://openrouter.ai/api/v1/models"
+
+# Prices are per million tokens, as listed by OpenRouter on the date above.
+# Jev's OpenRouter entry reports dynamic pricing (-1), so its cost is n/a until
+# a TypeSafe price is added here.
+
+[model."openai/gpt-6-luna"]
+input_per_mtok = 0.10
+output_per_mtok = 0.50

@@ -1,5 +1,6 @@
 [meta]
-model = "jev-latest"
+# Pinned; OpenRouter resolves this to typesafe/jev-1.13-20260917.
+model = "jev-1.13"
 min_confidence = 0.5
 timeout = 60
 # Default provider for this example: OpenRouter System One API.
@@ -18,34 +19,34 @@ command_question = "What shell task is the user asking for?"
 # ---------------------------------------------------------------- git
 [[command]]
 name = "git"
-description = "version control operations like status, log, diff, staging files, or chained pairs like 'stage then show status'"
+description = "version control operations: status, log, diff, staging files, and branch listing"
 risk = "read"
 instructions_subcommand = "Which git subcommand does the request need: status, log, diff, staging (add), or branch?"
 
   [[command.subcommand]]
   name = "status"
-  description = "show working tree status, e.g. 'show git status' or the second step of 'stage then show status'"
+  description = "show working tree status"
   argv = ["git", "status"]
   risk = "read"
 
   [[command.subcommand]]
   name = "log"
-  description = "show commit history, e.g. 'show recent commits' or 'brief git history'"
+  description = "show commit history"
   argv = ["git", "log"]
   risk = "read"
 
     [[command.subcommand.flag]]
     name = "--oneline"
-    description = "compact one-line-per-commit history, e.g. 'brief git history'"
+    description = "compact one-line-per-commit history"
     argv_fragment = ["--oneline"]
-    question = "Does the user explicitly ask for brief, compact, or one-line-per-commit history? A bare number like 'last 5 commits' alone does not ask for this."
+    question = "Does the user explicitly ask for compact one-line-per-commit history? A commit count alone does not ask for this."
 
     [[command.subcommand.flag]]
     name = "--max-count"
     description = "limit history to a fixed number of commits"
     argv_fragment = ["--max-count={value}"]
     values = ["5", "10", "20"]
-    question = "Does the request state an explicit number of commits to show, e.g. 'last 5 commits'? Vague words like 'brief' or 'recent' without a number do not count."
+    question = "Does the request state an explicit number of commits to show? Vague words without a number do not count."
     [command.subcommand.flag.value_descriptions]
     "5" = "last 5 commits"
     "10" = "last 10 commits"
@@ -53,7 +54,7 @@ instructions_subcommand = "Which git subcommand does the request need: status, l
 
   [[command.subcommand]]
   name = "diff"
-  description = "show uncommitted changes, e.g. 'show diff' or 'show diff stats'"
+  description = "show uncommitted changes"
   argv = ["git", "diff", "{path:scope}"]
   risk = "read"
 
@@ -75,7 +76,7 @@ instructions_subcommand = "Which git subcommand does the request need: status, l
 
   [[command.subcommand]]
   name = "add"
-  description = "stage a file for commit, e.g. 'stage src/main.py' or the first step of 'stage then show status'"
+  description = "stage a file for commit"
   argv = ["git", "add", "{path:src}"]
   risk = "write"
 
@@ -91,7 +92,7 @@ instructions_subcommand = "Which git subcommand does the request need: status, l
 
   [[command.subcommand]]
   name = "branch"
-  description = "list local branches, e.g. 'list git branches'"
+  description = "list local branches"
   argv = ["git", "branch"]
   risk = "read"
 
@@ -104,7 +105,7 @@ instructions_subcommand = "Which git subcommand does the request need: status, l
 # ---------------------------------------------------------------- ls
 [[command]]
 name = "ls"
-description = "list directory contents, e.g. 'list files here' or 'list files in docs'"
+description = "list directory contents"
 argv = ["ls", "{path:target}"]
 risk = "read"
 
@@ -126,7 +127,7 @@ risk = "read"
 # ---------------------------------------------------------------- cp
 [[command]]
 name = "cp"
-description = "copy a file into a directory, e.g. 'copy readme into docs'"
+description = "copy a file into a directory"
 argv = ["cp", "{path:src}", "{path:dst}"]
 risk = "write"
 

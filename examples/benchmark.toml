@@ -1,0 +1,34 @@
+[benchmark]
+# Defaults used by `python benchmark.py run`.
+repeats = 5
+alpha = 0.05
+# Both baselines use OpenRouter's openai/gpt-6-luna; the "openrouter/" prefix
+# is LiteLLM's provider selector.
+structured_model = "openrouter/openai/gpt-6-luna"
+logprob_model = "openrouter/openai/gpt-6-luna"
+pricing = "pricing.toml"
+results_dir = "benchmark-results"
+include_excluded = true
+
+# Paths are relative to examples/.
+
+[suite.git-workflow]
+label = "regression"
+env = "git-workflow/environment.toml"
+eval = "git-workflow/eval.toml"
+excluded = "git-workflow/excluded.toml"
+cwd = "git-workflow/workspace"
+
+[suite.python-qa]
+label = "regression"
+env = "python-qa/environment.toml"
+eval = "python-qa/eval.toml"
+excluded = "python-qa/excluded.toml"
+cwd = "python-qa/workspace"
+
+[suite.container-ops]
+label = "heldout"
+env = "container-ops/environment.toml"
+eval = "container-ops/eval.toml"
+cwd = "container-ops/workspace"
+manifest = "container-ops/manifest.json"

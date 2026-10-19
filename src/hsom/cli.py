@@ -431,7 +431,8 @@ def run_eval_file(config, args, logger=None) -> int:
     temp = args.temperature if args.temperature is not None else config.temperature
     for r in summary.results:
         if logger is not None:
-            logger.log(eval_event(r.case, r, temperature=temp))
+            logger.log(eval_event(r.case, r, temperature=temp,
+                                  model=r.model or config.model))
         status = "PASS" if r.passed else "FAIL"
         if r.actual is None:
             print(f"{status} {r.case.name}: {r.reason}")

@@ -1,0 +1,60 @@
+# Probes excluded from the git-workflow regression suite.
+# These are excluded so the headline accuracy is not selective: run them with
+# `python benchmark.py run --suite git-workflow --include-excluded` and report
+# both denominators.
+
+[[test]]
+name = "tip commit"
+input = "show just the tip commit"
+expect_abstain = true
+exclude_reason = "wrong-but-stable: the allowlist only models 5/10/20-commit counts, so the closest plan is bare git log"
+wrong_plan = true
+
+[[test]]
+name = "overview of all changes"
+input = "give me an overview of all changes"
+expected = "git diff --stat"
+exclude_reason = "input-fragile: --stat toggles between runs"
+wrong_plan = true
+
+[[test]]
+name = "what did I break"
+input = "what did I break?"
+expected = "git diff"
+exclude_reason = "input-fragile: abstains or flips to a different diff plan"
+wrong_plan = true
+
+[[test]]
+name = "different from HEAD"
+input = "what's different from HEAD?"
+expected = "git diff"
+exclude_reason = "input-fragile: abstains or flips to a different diff plan"
+wrong_plan = true
+
+[[test]]
+name = "shortlog of contributors"
+input = "show a shortlog of contributors"
+expect_abstain = true
+exclude_reason = "wrong-but-stable: plans git log --oneline although shortlog is not allowlisted"
+wrong_plan = true
+
+[[test]]
+name = "scoped diff"
+input = "limit the diff to the main file"
+expected = "git diff src/main.py"
+exclude_reason = "wrong-but-stable: the optional diff scope slot is silently dropped"
+wrong_plan = true
+
+[[test]]
+name = "detailed docs listing"
+input = "list the docs directory with details"
+expected = "ls -la docs"
+exclude_reason = "argv-order artifact: flags are appended after the path slot, producing 'ls docs -la'"
+wrong_plan = false
+
+[[test]]
+name = "changed file names"
+input = "show only the names of changed files"
+expect_abstain = true
+exclude_reason = "wrong-but-stable: --name-only is not allowlisted; the closest plan is a diff variant"
+wrong_plan = true

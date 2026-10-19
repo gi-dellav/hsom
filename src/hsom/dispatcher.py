@@ -118,6 +118,10 @@ class StepOutcome:
     stdout: str
     stderr: str
     dry_run: bool = False
+    model: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    latency_ms: float | None = None
 
 
 def _choice_info(answer) -> tuple[str, float, float | None, dict]:
@@ -460,6 +464,16 @@ def dispatch(config: EnvConfig, request: str, cwd: str = ".", *, client=None,
     return outcome, questions, context, response
 
 
+def _step_meta(response, latency_ms: float) -> dict:
+    usage = getattr(response, "usage", None)
+    return {
+        "model": getattr(response, "model", None),
+        "input_tokens": getattr(usage, "input_tokens", None),
+        "output_tokens": getattr(usage, "output_tokens", None),
+        "latency_ms": latency_ms,
+    }
+
+
 def dispatch_sequence(config: EnvConfig, request: str, cwd: str = ".", *,
                       client=None, min_confidence: float | None = None,
                       max_steps: int | None = None, max_history: int | None = None,
@@ -511,12 +525,14 @@ def dispatch_sequence(config: EnvConfig, request: str, cwd: str = ".", *,
     try:
         for i in range(budget):
             ask_continue = budget > 1 and i + 1 < budget
+            plan_started = time.perf_counter()
             outcome, _q, context, response = dispatch(
                 config, request, cwd, client=client,
                 min_confidence=min_confidence, history=history or None,
                 max_steps=budget, max_history=max_history,
                 allow_continue=ask_continue, temperature=temp,
                 step_index=i)
+            plan_latency_ms = (time.perf_counter() - plan_started) * 1000.0
             if logger is not None:
                 from hsom import runlog
                 logger.log(runlog.plan_event(
@@ -560,6 +576,7 @@ def dispatch_sequence(config: EnvConfig, request: str, cwd: str = ".", *,
                 # P2: the next planned argv repeats the previous step
                 # verbatim. Re-plan once with an anti-repeat nudge *before*
                 # executing anything; a second repeat stops honestly.
+                retry_started = time.perf_counter()
                 retry = _retry_after_repeat(
                     config, request, cwd, client=client,
                     min_confidence=min_confidence, history=history,
@@ -577,6 +594,7 @@ def dispatch_sequence(config: EnvConfig, request: str, cwd: str = ".", *,
                             i + 1, preview, stop_reason=reason))
                     return steps, reason
                 outcome, context, response, preview, action = retry
+                plan_latency_ms = (time.perf_counter() - retry_started) * 1000.0
             if action.risk in ("write", "destructive"):
                 approved = (False if on_confirm is None
                             else bool(on_confirm(action, preview)))
@@ -591,7 +609,9 @@ def dispatch_sequence(config: EnvConfig, request: str, cwd: str = ".", *,
             else:
                 res = _executor.execute(config, action, cwd)
                 argv, rc, out, err = res.argv, res.returncode, res.stdout, res.stderr
-            steps.append(StepOutcome(action, argv, rc, out, err))
+            steps.append(StepOutcome(
+                action, argv, rc, out, err,
+                **_step_meta(response, plan_latency_ms)))
             history.append(history_entry(i + 1, action, argv, rc, out, err))
             if logger is not None:
                 logger.log(runlog.result_event(i + 1, argv, returncode=rc,

@@ -1,0 +1,7 @@
+services:
+  app:
+    build: .
+    command: python src/app.py
+  worker:
+    build: .
+    command: python src/utils.py

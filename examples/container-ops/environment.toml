@@ -1,0 +1,203 @@
+[meta]
+# Pinned; OpenRouter resolves this to typesafe/jev-1.13-20260917.
+model = "jev-1.13"
+min_confidence = 0.5
+timeout = 60
+provider = "openrouter"
+default_risk = "read"
+max_steps = 1
+max_history = 5
+temperature = 0.0
+command_question = "Which container, build, search, or file operation is the user asking for?"
+  [meta.risk_thresholds]
+  read = 0.5
+  write = 0.7
+  destructive = 0.9
+
+# ---------------------------------------------------------------- docker
+[[command]]
+name = "docker"
+description = "container and image operations"
+risk = "read"
+instructions_subcommand = "Which Docker operation does the request need: build, list containers, list images, bring the compose services up or down, or show compose output?"
+
+  [[command.subcommand]]
+  name = "build"
+  description = "build an image from the Dockerfile in the current directory"
+  argv = ["docker", "build", "."]
+  risk = "write"
+
+    [[command.subcommand.flag]]
+    name = "--no-cache"
+    description = "build without using the layer cache"
+    argv_fragment = ["--no-cache"]
+    question = "Does the user explicitly ask to avoid the build cache?"
+
+  [[command.subcommand]]
+  name = "ps"
+  description = "list containers"
+  argv = ["docker", "ps"]
+  risk = "read"
+
+    [[command.subcommand.flag]]
+    name = "-a"
+    description = "include stopped containers"
+    argv_fragment = ["-a"]
+    question = "Does the user want stopped containers included?"
+
+  [[command.subcommand]]
+  name = "images"
+  description = "list local images"
+  argv = ["docker", "images"]
+  risk = "read"
+
+  [[command.subcommand]]
+  name = "compose-up"
+  description = "start the services defined in the compose file"
+  argv = ["docker", "compose", "up"]
+  risk = "write"
+
+    [[command.subcommand.flag]]
+    name = "-d"
+    description = "run the services in the background"
+    argv_fragment = ["-d"]
+    question = "Does the user want the services to run in the background?"
+
+  [[command.subcommand]]
+  name = "compose-down"
+  description = "stop and remove the services defined in the compose file"
+  argv = ["docker", "compose", "down"]
+  risk = "destructive"
+
+  [[command.subcommand]]
+  name = "compose-logs"
+  description = "show output from the services defined in the compose file"
+  argv = ["docker", "compose", "logs"]
+  risk = "read"
+
+    [[command.subcommand.flag]]
+    name = "--tail"
+    description = "limit the output to a number of recent lines"
+    argv_fragment = ["--tail={value}"]
+    values = ["20", "50", "100"]
+    question = "Does the request state how many recent log lines to show?"
+    [command.subcommand.flag.value_descriptions]
+    "20" = "twenty lines"
+    "50" = "fifty lines"
+    "100" = "one hundred lines"
+
+# ---------------------------------------------------------------- make
+[[command]]
+name = "make"
+description = "run a target from the Makefile"
+argv = ["make"]
+risk = "write"
+
+  [[command.flag]]
+  name = "--target"
+  description = "Makefile target to run"
+  argv_fragment = ["{value}"]
+  values = ["build", "test", "clean", "deploy"]
+  question = "Which Makefile target does the request name?"
+  [command.flag.value_descriptions]
+  build = "compile or assemble the project"
+  test = "run the project tests"
+  clean = "remove generated artifacts"
+  deploy = "publish or deploy the project"
+
+# ---------------------------------------------------------------- grep
+[[command]]
+name = "grep"
+description = "search files recursively for text"
+argv = ["grep", "-R", "{path:scope}"]
+risk = "read"
+
+  [[command.flag]]
+  name = "--pattern"
+  description = "text pattern to search for"
+  argv_fragment = ["-e", "{value}"]
+  values = ["TODO", "FIXME", "import", "def"]
+  question = "Which search pattern does the request name?"
+  [command.flag.value_descriptions]
+  TODO = "unfinished-work marker"
+  FIXME = "known-defect marker"
+  import = "Python import statement"
+  def = "Python function definition"
+
+  [[command.flag]]
+  name = "-n"
+  description = "show line numbers"
+  argv_fragment = ["-n"]
+  question = "Does the user ask for line numbers?"
+
+  [[command.path]]
+  name = "scope"
+  kind = "both"
+  optional = false
+  description = "file or directory to search"
+  base = "."
+  depth = 2
+  max_results = 200
+  question = "Which file or directory should be searched?"
+
+# ---------------------------------------------------------------- find
+[[command]]
+name = "find"
+description = "find files by name under a directory"
+argv = ["find", "{path:scope}"]
+risk = "read"
+
+  [[command.flag]]
+  name = "-name"
+  description = "file name pattern to match"
+  argv_fragment = ["-name", "{value}"]
+  values = ["*.py", "*.log", "*.md"]
+  question = "Which file name pattern does the request name?"
+  [command.flag.value_descriptions]
+  "*.py" = "Python files"
+  "*.log" = "log files"
+  "*.md" = "Markdown files"
+
+  [[command.path]]
+  name = "scope"
+  kind = "dirs"
+  optional = false
+  description = "directory to search"
+  base = "."
+  depth = 2
+  max_results = 200
+  question = "Which directory should be searched?"
+
+# ---------------------------------------------------------------- cat
+[[command]]
+name = "cat"
+description = "print the contents of a file"
+argv = ["cat", "{path:file}"]
+risk = "read"
+
+  [[command.path]]
+  name = "file"
+  kind = "files"
+  optional = false
+  description = "file to print"
+  base = "."
+  depth = 2
+  max_results = 200
+  question = "Which file should be printed?"
+
+# ---------------------------------------------------------------- ls
+[[command]]
+name = "ls"
+description = "list directory contents"
+argv = ["ls", "{path:target}"]
+risk = "read"
+
+  [[command.path]]
+  name = "target"
+  kind = "dirs"
+  optional = true
+  description = "directory to list"
+  base = "."
+  depth = 2
+  question = "Which directory should be listed?"
+  stated_question = "Does the request name a specific directory to list?"

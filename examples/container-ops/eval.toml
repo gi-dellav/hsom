@@ -1,0 +1,259 @@
+# Held-out benchmark suite. The freeze manifest records this file's hash.
+# Cases are single-shot: the loop/chaining evaluation is out of scope.
+
+# ---------------------------------------------------------------- docker
+[[test]]
+name = "build image"
+input = "build the docker image"
+expected = "docker build ."
+
+[[test]]
+name = "build without cache"
+input = "rebuild the image without using the build cache"
+expected = "docker build . --no-cache"
+
+[[test]]
+name = "running containers"
+input = "list the running containers"
+expected = "docker ps"
+
+[[test]]
+name = "all containers"
+input = "show all containers including stopped ones"
+expected = "docker ps -a"
+
+[[test]]
+name = "stopped containers"
+input = "show stopped containers"
+expected = "docker ps -a"
+
+[[test]]
+name = "local images"
+input = "show the local docker images"
+expected = "docker images"
+
+[[test]]
+name = "compose up background"
+input = "start the compose services in the background"
+expected = "docker compose up -d"
+
+[[test]]
+name = "compose up foreground"
+input = "start the compose services"
+expected = "docker compose up"
+
+[[test]]
+name = "compose down"
+input = "stop the compose stack"
+expected = "docker compose down"
+
+[[test]]
+name = "logs tail 50"
+input = "show the last 50 lines of the compose logs"
+expected = "docker compose logs --tail=50"
+
+[[test]]
+name = "logs tail 20"
+input = "show the last twenty lines of compose output"
+expected = "docker compose logs --tail=20"
+
+[[test]]
+name = "logs tail 100"
+input = "show the last 100 lines of the compose logs"
+expected = "docker compose logs --tail=100"
+
+[[test]]
+name = "logs no tail"
+input = "show the compose logs"
+expected = "docker compose logs"
+
+[[test]]
+name = "logs unsupported tail"
+input = "show the last 500 lines of compose output"
+expected = "docker compose logs"
+
+# ---------------------------------------------------------------- make
+[[test]]
+name = "make test"
+input = "run the make test target"
+expected = "make test"
+
+[[test]]
+name = "make build"
+input = "run make build"
+expected = "make build"
+
+[[test]]
+name = "make default"
+input = "run the default make target"
+expected = "make"
+
+[[test]]
+name = "make clean"
+input = "clean the build artifacts with make"
+expected = "make clean"
+
+[[test]]
+name = "make deploy"
+input = "deploy the project with make"
+expected = "make deploy"
+
+[[test]]
+name = "make build verbose degrade"
+input = "run the make build target with verbose output"
+expected = "make build"
+
+[[test]]
+name = "make test stop degrade"
+input = "run the make test target and stop on failure"
+expected = "make test"
+
+# ---------------------------------------------------------------- grep
+[[test]]
+name = "grep TODO src"
+input = "search the src directory for TODO"
+expected = "grep -R src -e TODO"
+
+[[test]]
+name = "grep FIXME tests"
+input = "search the tests directory for FIXME"
+expected = "grep -R tests -e FIXME"
+
+[[test]]
+name = "grep import line numbers"
+input = "recursively search src for import with line numbers"
+expected = "grep -R src -e import -n"
+
+[[test]]
+name = "grep def docs"
+input = "search docs for def"
+expected = "grep -R docs -e def"
+
+# ---------------------------------------------------------------- find
+[[test]]
+name = "find python src"
+input = "find python files under src"
+expected = "find src -name *.py"
+
+[[test]]
+name = "find logs"
+input = "find log files in the logs directory"
+expected = "find logs -name *.log"
+
+[[test]]
+name = "find markdown docs"
+input = "find markdown files under docs"
+expected = "find docs -name *.md"
+
+# ---------------------------------------------------------------- cat
+[[test]]
+name = "cat dockerfile"
+input = "show the dockerfile"
+expected = "cat Dockerfile"
+
+[[test]]
+name = "cat compose"
+input = "print the compose file"
+expected = "cat compose.yaml"
+
+[[test]]
+name = "cat app"
+input = "print the src app python file"
+expected = "cat src/app.py"
+
+[[test]]
+name = "cat deploy script"
+input = "show the deploy script"
+expected = "cat scripts/deploy.sh"
+
+[[test]]
+name = "cat readme"
+input = "print the readme"
+expected = "cat README.md"
+
+# ---------------------------------------------------------------- ls
+[[test]]
+name = "ls root"
+input = "list the project root"
+expected = "ls"
+
+[[test]]
+name = "ls tests"
+input = "list the tests directory"
+expected = "ls tests"
+
+[[test]]
+name = "ls scripts"
+input = "list files in scripts"
+expected = "ls scripts"
+
+[[test]]
+name = "ls docs"
+input = "list the docs folder"
+expected = "ls docs"
+
+# ---------------------------------------------------------------- negatives
+[[test]]
+name = "remove containers abstains"
+input = "remove all stopped containers"
+expect_abstain = true
+
+[[test]]
+name = "push image abstains"
+input = "push the image to the registry"
+expect_abstain = true
+
+[[test]]
+name = "install deps abstains"
+input = "install the project dependencies"
+expect_abstain = true
+
+[[test]]
+name = "delete logs abstains"
+input = "delete the logs directory"
+expect_abstain = true
+
+[[test]]
+name = "kubectl abstains"
+input = "run kubectl get pods"
+expect_abstain = true
+
+[[test]]
+name = "git abstains"
+input = "show git status"
+expect_abstain = true
+
+[[test]]
+name = "format python abstains"
+input = "format the python code"
+expect_abstain = true
+
+[[test]]
+name = "pytest abstains"
+input = "run the test suite with pytest"
+expect_abstain = true
+
+[[test]]
+name = "grep no scope abstains"
+input = "search for TODO"
+expect_abstain = true
+
+[[test]]
+name = "find no scope abstains"
+input = "find python files"
+expect_abstain = true
+
+[[test]]
+name = "copy abstains"
+input = "copy the dockerfile into docs"
+expect_abstain = true
+
+[[test]]
+name = "move abstains"
+input = "move the log file into dist"
+expect_abstain = true
+
+[[test]]
+name = "version abstains"
+input = "check the docker version"
+expect_abstain = true

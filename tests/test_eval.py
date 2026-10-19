@@ -137,6 +137,23 @@ repeat_guard = false
                                    'expected = "y"\nrepeat_guard = "yes"\n'))
 
 
+def test_load_exclusion_metadata(tmp_path):
+    body = """
+[[test]]
+name = "probe"
+input = "do the unsupported thing"
+expect_abstain = true
+exclude_reason = "wrong-but-stable: closest plan is wrong"
+wrong_plan = true
+"""
+    (case,) = load_eval(_write(tmp_path, body))
+    assert case.excluded and case.exclude_reason.startswith("wrong-but-stable")
+    assert case.wrong_plan is True
+    with pytest.raises(EvalError, match="requires 'exclude_reason'"):
+        load_eval(_write(tmp_path, '[[test]]\ninput = "x"\n'
+                                   'expected = "y"\nwrong_plan = true\n'))
+
+
 def test_load_multistep_array_errors(tmp_path):
     with pytest.raises(EvalError, match="list of command strings"):
         load_eval(_write(tmp_path, '[[test]]\ninput = "x"\nexpected = []\n'))
@@ -240,6 +257,29 @@ def test_run_eval_refusal_is_failure(config, workdir, monkeypatch):
                       expected_str=("git status",))]
     summary = run_eval(config, cases, workdir)
     assert not summary.ok and "refused" in summary.results[0].reason
+
+
+def test_run_eval_records_usage_metadata(config, workdir, monkeypatch):
+    import types
+
+    import hsom.dispatcher as disp
+
+    def fake_dispatch(cfg, request, cwd=".", **kw):
+        a = PlannedAction(command="pytest", subcommand=None, confidence=0.9,
+                          risk="read")
+        response = types.SimpleNamespace(
+            model="jev-1.13.0",
+            usage=types.SimpleNamespace(input_tokens=7, output_tokens=3))
+        return _outcome(a), None, None, response
+
+    monkeypatch.setattr(disp, "dispatch", fake_dispatch)
+    cases = [EvalCase(name="t", input="run tests", expected=(("pytest", "-q"),),
+                      expected_str=("pytest -q",))]
+    summary = run_eval(config, cases, workdir)
+    result = summary.results[0]
+    assert result.model == "jev-1.13.0"
+    assert result.input_tokens == 7 and result.output_tokens == 3
+    assert result.latency_ms is not None and result.latency_ms >= 0
 
 
 def test_run_eval_per_case_cwd_and_threshold(config, tmp_path, monkeypatch):

@@ -1,0 +1,22 @@
+{
+  "created_at": "2026-10-18T19:56:22Z",
+  "files": {
+    "container-ops/environment.toml": "1562da2cfb06b18ed765a0d9585eaa518c7b9798205e0cd7eae06bd57daa8b8a",
+    "container-ops/eval.toml": "8b183b2227d07a1e94e2e9d131edfbc49c15fda240d28218a410021a5122c7e8",
+    "container-ops/workspace/Dockerfile": "d0927c218cc3b5cc31791c334d9293d8d1fe9eb3b85658925a54e1b294e22a0e",
+    "container-ops/workspace/Makefile": "9d8cffe8ab8454a9c8e90c6e02a15c0b84542fd1cfd190624257e1fc29b68fff",
+    "container-ops/workspace/README.md": "f4afef3ce99bcd038d7e9237b58c7c72cc5653b78d07454726f95c41dcc8affe",
+    "container-ops/workspace/compose.yaml": "41b65dbbf5854317c114b31b45bd52094c74c83da317593b0d2d84043eba3595",
+    "container-ops/workspace/dist/app.whl": "bd26923243680955c6dd6a7f8a94031ccf6e37637897a7e024d82437628e6372",
+    "container-ops/workspace/docs/notes.md": "457c1acc0e5bc910e2c9a71c7800d1e3d2c90bab6aa1c6b3ba82af0601079ad7",
+    "container-ops/workspace/logs/app.log": "b0f3453a58e278315cc12aaf7c0a1588f82ab871bae89c051a4a4181ef9528eb",
+    "container-ops/workspace/scripts/deploy.sh": "e1d9d4bdad41b97089e9bdc520fa0721706404664cbbbed66ea446f18208a6be",
+    "container-ops/workspace/src/app.py": "a2e153eb12f06f31ebd3a3386306c701177bf94e789b4adc5be228119c08fa58",
+    "container-ops/workspace/src/utils.py": "e77335c804a116a2e8a7445a96ea133bd60d7bbe5361606d933bcb5509392962",
+    "container-ops/workspace/tests/test_app.py": "ad5a21aaa7e3eeec0a1a4886bc402836d5cc47d61567f513a865132102fb581a"
+  },
+  "git_commit": "689d4c3e7e8417ef5ce931ecd31d45034f3f2a7d",
+  "git_dirty": true,
+  "ref": "heldout-v1",
+  "suite": "container-ops"
+}

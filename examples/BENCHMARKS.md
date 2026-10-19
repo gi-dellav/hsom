@@ -1,278 +1,197 @@
 # Benchmarks
 
-Live eval runs against **OpenRouter** (`provider = "openrouter"`,
-model `jev-latest`) on 2026-09-26, after the P1/P2/P3 chaining-harness
-upgrade (step-aware prompts, anti-repeat retry, tunable `__continue__`
-threshold). Each example was run via its `run_eval.sh`, 3 consecutive runs
-per example to check stability:
+Results generated on **2026-10-18** by `benchmark.py` from the frozen
+examples under `examples/`. The complete per-case report is checked in as
+[`BENCHMARK-REPORT.md`](BENCHMARK-REPORT.md); this file summarizes it.
 
-```bash
-export OPENROUTER_API_KEY=...   # https://openrouter.ai/settings/keys
-cd examples/git-workflow && ./run_eval.sh   # 64/64 passed (exit 0), 3/3 runs
-cd examples/python-qa && ./run_eval.sh      # 51/52 passed (exit 5), 3/3 runs
-```
+## Methodology
 
-Eval mode plans only — nothing executes, nothing prompts. Exit 5
-(`EXIT_EVAL_FAIL`) means at least one test failed; per-test PASS/FAIL lines
-and `eval-results.jsonl` (one `eval` JSON object per `[[test]]`) carry the
-detail. The two failures are kept deliberately: they pin known Jev chaining
-limits (see "Known failures" below) instead of hiding them.
+- Jev: pinned `model = "jev-1.13"` (OpenRouter resolves it to
+  `typesafe/jev-1.13-20260917`), `temperature = 0.0`, provider OpenRouter.
+- Jev was run **5 times per case** on all three suites. Exclusions were run
+  and reported both with and without them.
+- Both LiteLLM baselines use `openai/gpt-6-luna` through OpenRouter. Held-out
+  baselines were run **3 times per case**; regression baselines **1 time per
+  case**. Multi-step cases are not evaluated by the single-step baselines and
+  are counted as skipped.
+- GPT-6 Luna is a reasoning model and OpenRouter rejects `logprobs` for it.
+  The `logprobs` baseline therefore falls back to greedy answers; the number
+  of fallback calls is reported in the cost table and the full report
+  (held-out fallbacks: 359; regression totals: git
+  210, python-qa 156). Its numbers are a greedy-model comparison, not a
+  true log-probability measurement.
+- **Strict pass** means every repeat passed. Intervals are exact
+  Clopper–Pearson 95% over cases. Pooled-run intervals are repeatability
+  estimates; repeated runs of one case are correlated, so case-level
+  intervals are the primary generalization statement.
+- Headline evidence comes from the frozen held-out suite `container-ops`
+  (`heldout-v1`). `git-workflow` and `python-qa` are development/regression
+  suites and are reported separately.
+- Cost uses OpenRouter pricing dated 2026-10-18 (USD). Jev's OpenRouter
+  pricing is dynamic/unpublished, so Jev cost is `n/a`.
 
-## git-workflow — 64/64
+## Held-out headline (container-ops, 50 cases)
 
-17 core+path cases, 15 harder one-shots, 23 round-2 one-shots, 1 chain, 8 negatives (19 abstains total).
+| System | Repeats | Strict pass | Strict rate | 95% CI | Pooled runs | Pooled CI | Skipped | p50 ms | p95 ms | Cost |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Jev | 5 | 46/50 | 92.0% | 80.8%–97.8% | 230/250 | 87.9%–95.0% | 0 | 364.5 | 448.9 | n/a |
+| structured LLM | 3 | 31/50 | 62.0% | 47.2%–75.3% | 105/150 | 62.0%–77.2% | 0 | 3044.9 | 5010.2 | 0.0073 USD |
+| logprob LLM (greedy fallback) | 3 | 34/50 | 68.0% | 53.3%–80.5% | 111/150 | 66.2%–80.8% | 0 | 2470.2 | 5546.2 | 0.0054 USD |
 
-| test | input | expected | conf | result |
-| ---- | ----- | -------- | ---- | ------ |
-| status | show git status | `git status` | 1.00 | PASS |
-| status paraphrase | check git working tree state | `git status` | 1.00 | PASS |
-| brief history | brief git history | `git log --oneline` | 1.00 | PASS |
-| bare history | show commits by giuseppe | `git log` | 1.00 | PASS |
-| last five commits | show the last 5 commits | `git log --max-count=5` | 1.00 | PASS (valued flag) |
-| brief last twenty | show the last 20 commits in compact form | `git log --oneline --max-count=20` | 1.00 | PASS (both flags stack) |
-| diff stat | show diff stats | `git diff --stat` | 1.00 | PASS (boolean flag) |
-| bare diff | show the current diff | `git diff` | 1.00 | PASS (flag correctly off) |
-| list branches | list git branches | `git branch` | 1.00 | PASS |
-| branches paraphrase | which branches exist | `git branch` | 1.00 | PASS |
-| all branches | list all git branches including remotes | `git branch -a` | 1.00 | PASS (boolean flag) |
-| remotes shorthand | show remote branches too | `git branch -a` | 1.00 | PASS |
-| stage main file | stage the src main python file | `git add src/main.py` | 0.70–0.79 | PASS (risk write, planned only) |
-| stage utils file | stage the utils python file | `git add src/utils.py` | 0.92–0.95 | PASS |
-| list docs dir | list files in docs | `ls docs` | 1.00 | PASS (optional dir slot) |
-| copy main into docs | copy the src main file into docs | `cp src/main.py docs` | 0.76–0.79 | PASS (two-slot `src`+`dst`) |
-| copy utils into docs | copy src/utils.py to docs | `cp src/utils.py docs` | 1.00 | PASS |
-| brief last ten | show the last 10 commits briefly | `git log --oneline --max-count=10` | 1.00 | PASS (harder: new value + new phrasing) |
-| bare ls detail | list everything here in detail | `ls -la` | 1.00 | PASS (harder: no tool/dir named) |
-| bare ls | list files | `ls` | 1.00 | PASS (harder: bare listing, slot omitted) |
-| copy here | copy src/main.py here | `cp src/main.py` | 0.96 | PASS (harder: optional `dst` omitted) |
-| repo state | status of the repo | `git status` | 1.00 | PASS (harder: terse noun phrase) |
-| casual status | gimme git status | `git status` | 1.00 | PASS (harder: slang) |
-| whole history | show the whole history, all of it | `git log` | 0.71–0.73 | PASS (harder: both flags correctly off) |
-| local only | list only local branches | `git branch` | 1.00 | PASS (harder: `-a` correctly off) |
-| not compact | show full history, not the compact form | `git log` | 0.88–0.93 | PASS (harder: negated flag) |
-| summarize changes | summarize the changes | `git diff --stat` | 0.84–0.89 | PASS (harder: `--stat` inferred) |
-| show patch | show me the patch | `git diff` | 0.99 | PASS (harder: bare diff inferred) |
-| stage then status | stage the src main python file then show status | `git add src/main.py` ; `git status` | 0.60–0.66 | PASS (chain; per-test `continue_threshold = 0.3`, see below) |
-| compact five | show 5 recent commits compactly | `git log --oneline --max-count=5` | 1.00 | PASS (round 2: antonym pair — "compactly" turns `--oneline` on) |
-| full five | show 5 recent commits with full messages | `git log --max-count=5` | 1.00 | PASS (round 2: "full messages" keeps `--oneline` off) |
-| tree clean | is my tree clean? | `git status` | 0.99–1.00 | PASS (round 2: idiom) |
-| unstaged compact | show unstaged changes compactly | `git diff --stat` | 0.79 | PASS (round 2) |
-| whats here | what's in here? | `ls` | 0.99 | PASS (round 2: bare listing) |
-| duplicate file | duplicate main.py into docs | `cp src/main.py docs` | 0.87–0.88 | PASS (round 2: synonym) |
-| back up file | back up utils.py into docs | `cp src/utils.py docs` | 0.97 | PASS (round 2: synonym) |
-| copy bare | copy the utils file | `cp src/utils.py` | 0.72–0.79 | PASS (round 2: optional `dst` omitted) |
-| dirty tree | is the working tree dirty? | `git status` | 1.00 | PASS (round 2: idiom) |
-| lately commits | what have we been committing lately? | `git log` | 0.98–0.99 | PASS (round 2: idiom, both flags off) |
-| current dir | list the current directory | `ls` | 1.00 | PASS (round 2) |
-| uncommitted full | show my uncommitted changes in full | `git diff` | 1.00 | PASS (round 2: "full" keeps `--stat` off) |
-| outstanding work | anything outstanding? | `git status` | 0.62–0.75 | PASS (round 2: vague → status) |
-| overview changes | give me a summary of all changes | `git diff --stat` | 0.60–0.69 | PASS (round 2: `--stat` inferred; note "overview" alone is borderline, see rejected) |
-| newest first | show the newest commits first | `git log` | 1.00 | PASS (round 2) |
-| current branch | which branch am I on? | `git branch` | 0.88–0.93 | PASS (round 2) |
-| move trap abstains | move main.py into docs | abstain | — | PASS (round 2: `cp` allowlist has no move semantics) |
-| revert trap abstains | revert main.py to HEAD | abstain | — | PASS |
-| squash trap abstains | squash the last two commits | abstain | — | PASS |
-| fetch trap abstains | fetch the latest from origin | abstain | — | PASS |
-| tag trap abstains | tag the current commit v1.0 | abstain | — | PASS |
-| rename trap abstains | rename main.py to app.py | abstain | — | PASS (round 2: closest match would be `cp`, correctly refused) |
-| clone trap abstains | clone the repo into /tmp/copy | abstain | — | PASS |
-| stage all abstains | stage all python files | abstain | — | PASS (no multi-select: no single candidate matches) |
-| copy all abstains | copy all python files into docs | abstain | — | PASS |
-| blame abstains | show git blame for main.py | abstain | — | PASS (`'git' needs a subcommand…`) |
-| amend abstains | amend the last commit | abstain | — | PASS |
-| commit abstains | commit all staged changes … | abstain | — | PASS |
-| push abstains | push the current branch to origin | abstain | — | PASS |
-| stash abstains | stash my uncommitted changes | abstain | — | PASS |
-| merge abstains | merge the feature branch into main | abstain | — | PASS |
-| reset abstains | unstage all staged files | abstain | — | PASS (falls into `add` but no `*.py` file matches) |
-| delete abstains | delete the notes file | abstain | — | PASS (`request matches no known command`) |
-| stage markdown abstains | stage the notes markdown file | abstain | — | PASS (add slot globbed to `*.py`, `notes.md` not a candidate) |
-| nonsense abstains | launch the rockets to mars | abstain | — | PASS |
+Jev held-out failures (all 5/5 runs):
 
-## python-qa — 51/52
+| Case | Expected | Actual |
+| --- | --- | --- |
+| compose up foreground | `'docker compose up'` | `'docker compose up -d'` |
+| find no scope abstains | abstain | `'find src -name '*.py''` |
+| grep no scope abstains | abstain | `'grep -R src -e TODO'` |
+| make deploy | `'make deploy'` | `'make'` |
 
-16 base cases, 10 harder one-shots, 18 round-2 one-shots, 1 chain, 7 negatives.
+Baseline failure highlights:
 
-| test | input | expected | conf | result |
-| ---- | ----- | -------- | ---- | ------ |
-| run tests | run tests | `pytest -q` | 1.00 | PASS |
-| run suite paraphrase | run the test suite for the app | `pytest -q` | 1.00 | PASS |
-| run tests stop early | run tests stopping at the first failure | `pytest -q -x` | 1.00 | PASS (boolean flag) |
-| run tests short traceback | run tests with short traceback | `pytest -q --tb=short` | 1.00 | PASS (valued flag) |
-| run tests long traceback | run tests with full long tracebacks | `pytest -q --tb=long` | 0.92–0.94 | PASS |
-| run tests no traceback | run tests with no traceback output | `pytest -q --tb=no` | 0.99 | PASS |
-| run tests both flags | run tests stopping at the first failure with short tracebacks | `pytest -q -x --tb=short` | 0.99 | PASS (boolean + valued stack) |
-| lint project | lint the code | `ruff check` | 0.99–1.00 | PASS (optional slot omitted) |
-| lint app file | lint the src app file | `ruff check src/app.py` | 0.78–0.80 | PASS |
-| lint test file | lint the tests test_app python file | `ruff check tests/test_app.py` | 0.65–1.00 | PASS (see note) |
-| format check | check formatting | `ruff format --check` | 1.00 | PASS |
-| format check app file | check formatting of the src app file | `ruff format --check src/app.py` | 0.83–0.85 | PASS |
-| run app script | run the src app script | `python src/app.py` | 0.85–0.87 | PASS (required path slot) |
-| run app paraphrase | execute the src app python script directly with the interpreter | `python src/app.py` | 0.93–0.96 | PASS |
-| list tests dir | list files in tests | `ls tests` | 1.00 | PASS |
-| list src dir | list files in src | `ls src` | 1.00 | PASS |
-| coverage flagless | run tests with coverage | `pytest -q` | 1.00 | PASS (harder: no such flag — degrades to base) |
-| filter flagless | run only the test for add | `pytest -q` | 1.00 | PASS (harder: no `-k` flag — degrades to base) |
-| lint everything | lint everything | `ruff check` | 0.99–1.00 | PASS (harder: no tool/dir named) |
-| verify formatting | verify formatting everywhere | `ruff format --check` | 1.00 | PASS (harder: synonym + bare slot) |
-| test app file | test the app file | `pytest -q` | 0.89–0.94 | PASS (harder: pytest-vs-python disambiguation) |
-| unit tests | run the unit tests | `pytest -q` | 1.00 | PASS (harder: synonym) |
-| pytest by tool | use pytest to check everything passes | `pytest -q` | 1.00 | PASS (harder: tool named, intent implied) |
-| quiet tests | run tests quietly | `pytest -q` | 1.00 | PASS (harder: `-q` already baked into argv) |
-| format quietly | check formatting quietly without fixing anything | `ruff format --check` | 1.00 | PASS (harder: noise words ignored) |
-| python on tests | run python on tests | `pytest -q` | 1.00 | PASS (harder: directory routes to pytest, not `python`) |
-| verbose trap | run tests verbosely | `pytest -q` | 1.00 | PASS (round 2: no `--verbose` flag — degrades to base) |
-| stop early no traceback | run tests stopping at the first failure with no traceback output | `pytest -q -x --tb=no` | 0.99 | PASS (round 2: novel boolean+valued combo) |
-| long keep going | run tests with long tracebacks but keep going through all failures | `pytest -q --tb=long` | 0.98–0.99 | PASS (round 2: "keep going" keeps `-x` off) |
-| whole suite | run the whole suite | `pytest -q` | 1.00 | PASS (round 2: synonym) |
-| start app | start the app | `python src/app.py` | 0.51–0.53 | PASS (round 2: terse; borderline conf, stable 3/3) |
-| execute interpreter | execute src/app.py with the python interpreter | `python src/app.py` | 1.00 | PASS (round 2) |
-| format app explicit | run ruff format --check on src/app.py | `ruff format --check src/app.py` | 1.00 | PASS (round 2: tool syntax in input) |
-| root contents | what's in the project root? | `ls` | 0.98–0.99 | PASS (round 2: bare root listing) |
-| audit app | audit src/app.py for issues | `ruff check src/app.py` | 0.54–0.59 | PASS (round 2: synonym; borderline conf) |
-| build passing | is the build passing? | `pytest -q` | 0.56–0.63 | PASS (round 2: idiom; borderline conf — "is the build green?" abstains, see rejected) |
-| hygiene repo | check code hygiene across the repo | `ruff check` | 0.80–0.83 | PASS (round 2: synonym) |
-| test doctor | run the test doctor | `pytest -q` | 0.91–0.95 | PASS (round 2: synonym) |
-| tidy formatting | is the formatting tidy? | `ruff format --check` | 0.99 | PASS (round 2: synonym) |
-| mypy maps to lint | run mypy on the app | `ruff check` | 0.66–0.69 | PASS (round 2: unknown tool degrades to closest allowlisted op — documented behavior change, see below) |
-| fix lint maps to lint | fix all lint issues in the app | `ruff check` | 0.98 | PASS (round 2: write-intent maps to read-only check) |
-| apply format maps to check | apply formatting checks to the app file | `ruff format --check` | 0.59–1.00 | PASS (round 2: "apply … checks" parses as check, not write) |
-| lint both maps to lint | lint both the app and test files | `ruff check` | 1.00 | PASS (round 2: multi-select degrades to whole-project check) |
-| lint app and tests | lint the app together with the test files | `ruff check` | 1.00 | PASS (round 2) |
-| lint then format | first lint the code, then check formatting | `ruff check` ; `ruff format --check` | 0.24–0.28 (step 2) | **FAIL** — step-2 subcommand stalls at check-vs-format ~50/50 (conf below read bar), 3/3 runs |
-| pip install abstains | install the project dependencies with pip | abstain | — | PASS |
-| venv abstains | create a virtual environment | abstain | — | PASS |
-| upgrade abstains | upgrade all outdated pip packages | abstain | — | PASS |
-| debugger abstains | open a python debugger on the app | abstain | — | PASS |
-| oneliner abstains | run python with a one-liner to print hello | abstain | — | PASS (script slot needs an existing `*.py` file) |
-| format write abstains | format the app file in place | abstain | — | PASS (format runs `--check` only; conf ~0.49 < 0.50) |
-| nonsense abstains | launch the rockets to mars | abstain | — | PASS |
+- `structured` failed 19/50 cases, including enabling `-n`,
+  `--tail`, or `--no-cache` when not requested, confusing `cat` with `find`,
+  and abstaining on some valid commands.
+- `logprobs` (greedy fallback) failed 16/50 cases, including
+  wrong command routing, unwanted `-n` injection, and several
+  `none_of_the_above` abstentions. One case timed out on a provider call.
 
-## Chaining-harness upgrade (P1/P2/P3) — what changed and what it fixed
+## Regression suites
 
-The v4 benchmark pinned two chain failures with the same surface symptom
-("stops after step 1") but different root causes. The harness upgrade
-addresses both at the mechanism level (no model change, no weakened
-expectations):
+### Aggregate accuracy
 
-- **P1 — step-aware prompts** (`questions.build_questions(..., step_index,
-  history, max_steps)`): step 2+ L1/`__continue__` instructions name the
-  step number, the completed steps (`step N (node): argv…`), and the
-  remaining budget, and `dispatch()` surfaces `state["step"]`,
-  `state["max_steps"]`, plus enriched history entries (`node`, `describe`
-  next to `argv`). Step-1 wording is byte-identical to before (all 105+
-  pre-existing unit tests pass unchanged).
-- **P2 — anti-repeat retry** (`dispatch_sequence(..., repeat_guard=True)` by
-  default): when step 2+ resolves to the previous step's argv, the harness
-  re-plans once with an anti-repeat nudge (`state["hint"]` +
-  `REPEAT_HINT_INSTRUCTIONS`) instead of executing a duplicate; a second
-  repeat stops honestly. Eval defaults to `repeat_guard=False` so canned
-  identical plans in unit fixtures are accepted as-is; set `[meta]
-  repeat_guard = true` (or a per-test `repeat_guard`) to evaluate the guarded
-  behavior.
-- **P3 — tunable `__continue__` gate**: `[meta] continue_threshold` (0..1,
-  default 0.5) + `continue_question` override, `--continue-threshold` CLI
-  flag (wins), and per-test `continue_threshold` in eval TOML (wins for that
-  test). Resolved via `effective_continue_threshold` (CLI > meta > default)
-  and logged in runlog `plan` events (`continue_threshold[_source]`).
+`strict` means every repeat passed. Intervals are exact Clopper–Pearson at 95% over cases; pooled intervals treat runs as trials and are labelled separately because repeated runs of one case are correlated.
+| Suite | Label | System | Cases | Strict pass | Strict rate | 95% CI | Pooled runs | Pooled CI | Provider-error cases | Skipped |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| git-workflow | regression | jev | 64 | 61 | 95.3% | 86.9%–99.0% | 311/320 | 94.7%–98.7% | 0 | 0 |
+| git-workflow | regression | logprobs | 63 | 42 | 66.7% | 53.7%–78.0% | 42/63 | 53.7%–78.0% | 0 | 1 |
+| git-workflow | regression | structured | 63 | 37 | 58.7% | 45.6%–71.0% | 37/63 | 45.6%–71.0% | 0 | 1 |
+| python-qa | regression | jev | 52 | 50 | 96.2% | 86.8%–99.5% | 254/260 | 95.0%–99.1% | 0 | 0 |
+| python-qa | regression | logprobs | 51 | 23 | 45.1% | 31.1%–59.7% | 23/51 | 31.1%–59.7% | 0 | 2 |
+| python-qa | regression | structured | 51 | 22 | 43.1% | 29.3%–57.8% | 22/51 | 29.3%–57.8% | 0 | 2 |
 
-What it fixed, per pinned case:
+### With and without exclusions
 
-- **git-workflow `stage then status` — FIXED (FAIL → PASS 3/3)**. Live
-  probing showed the gate hovers ~0.4 on this pair while both step plans
-  are strong (step 1 conf ~0.78, step 2 `git status` conf ~0.51–0.66 with
-  the P1 step-aware prompts disambiguating `status` from `add`). A
-  per-test `continue_threshold = 0.3` in `eval.toml` keeps this chain
-  alive without touching the read/write confidence bars — a legitimate
-  per-task calibration, documented inline in the eval file.
-- **python-qa `lint then format` — still FAILs, now for a sharper reason**.
-  With P1+P3 the gate opens, but the step-2 *subcommand* choice stalls at
-  check-vs-format ~50/50 with conf 0.24–0.28, below the read bar. No
-  threshold tuning fixes that honestly (lowering `min_confidence` would
-  paper over a coin flip), so the harness correctly stops instead of
-  executing a wrong or repeated step — exactly the P2 fail-safe working
-  as designed. This one is a model-side ambiguity (one `ruff` command,
-  two near-identical subcommand descriptions), not a harness bug.
+`applied` is the headline denominator (excluded probes omitted). `removed` includes the excluded probes and is only available when they were run with `--include-excluded`.
+| Suite | System | Exclusions | Cases | Strict pass | Strict rate | 95% CI |
+| --- | --- | --- | --- | --- | --- | --- |
+| git-workflow | jev | applied | 64 | 61 | 95.3% | 86.9%–99.0% |
+| git-workflow | jev | removed | 72 | 61 | 84.7% | 74.3%–92.1% |
+| git-workflow | logprobs | applied | 63 | 42 | 66.7% | 53.7%–78.0% |
+| git-workflow | logprobs | removed | 71 | 42 | 59.2% | 46.8%–70.7% |
+| git-workflow | structured | applied | 63 | 37 | 58.7% | 45.6%–71.0% |
+| git-workflow | structured | removed | 71 | 38 | 53.5% | 41.3%–65.5% |
+| python-qa | jev | applied | 52 | 50 | 96.2% | 86.8%–99.5% |
+| python-qa | jev | removed | 62 | 51 | 82.3% | 70.5%–90.8% |
+| python-qa | logprobs | applied | 51 | 23 | 45.1% | 31.1%–59.7% |
+| python-qa | logprobs | removed | 60 | 25 | 41.7% | 29.1%–55.1% |
+| python-qa | structured | applied | 51 | 22 | 43.1% | 29.3%–57.8% |
+| python-qa | structured | removed | 60 | 24 | 40.0% | 27.6%–53.5% |
 
-## Known failures (kept deliberately)
+### Stability across repeats
 
-One remaining failure — **python-qa `lint then format`** (see above): the
-step-2 subcommand stalls at check-vs-format ~50/50 (conf 0.24–0.28 <
-0.50 read bar) across all 3 runs. The P2 guard converts the old
-repeat-`ruff check` outcome into an honest stop, but the underlying
-ambiguity needs a model-side or allowlist-side fix (e.g. sharper
-`check`-vs-`format` descriptions), not a threshold tweak.
+| Suite | System | Per-run pass rates | Range | All-repeat cases |
+| --- | --- | --- | --- | --- |
+| git-workflow | jev | 95.3%, 98.4%, 98.4%, 96.9%, 96.9% | 95.3%–98.4% | 61/64 |
+| git-workflow | logprobs | 66.7% | 66.7%–66.7% | 42/63 |
+| git-workflow | structured | 58.7% | 58.7%–58.7% | 37/63 |
+| python-qa | jev | 98.1%, 96.2%, 98.1%, 98.1%, 98.1% | 96.2%–98.1% | 50/52 |
+| python-qa | logprobs | 45.1% | 45.1%–45.1% | 23/51 |
+| python-qa | structured | 43.1% | 43.1%–43.1% | 22/51 |
 
-Rejected during probing (tried live, deliberately *not* included because the
-behavior is wrong-but-stable or input-fragile, not a fair test): scoped
-optional slots (`git diff --stat src/main.py` — slot silently dropped);
-`ls -la <dir>` (model emits `ls <dir> -la`, an argv-order artifact of the
-flag-fragment appending, not a reasoning failure); vague file references
-("lint the test file", "run the app") that need the filename spelled out to
-clear the 0.50 bar; cross-command chains (`ruff check` → `pytest -q`) that
-abstain at L1 no matter the phrasing. `lint test file` (conf 0.65–1.00)
-stays in as the one intentionally borderline case.
+### Jev regression cases with any failed repeat
 
-Round-2 rejections (same bar — stable-wrong or 50/50 fragile, excluded so
-the suite stays signal, not noise):
+This includes excluded probes; see the exclusion table below.
 
-- git: "show just the tip commit" (plans bare `git log`, no count concept to
-  map "tip" to); "give me an overview of all changes" (`--stat` on/off flips
-  run to run — kept the stable twin "give me a summary of all changes");
-  "what did I break?" / "what's different from HEAD?" (abstain or flip);
-  "show a shortlog of contributors" (plans `--oneline`, a plausible but
-  un-allowlisted mapping — no shortlog flag exists).
-- qa: "is the build green?" (abstains at 0.45–0.46; kept the stable twin "is
-  the build passing?"); "smoke-test the app" (routes to pytest, not python —
-  defensible either way); "run tests and show only the failure summary"
-  (drops `--tb=no`); "list tests in detail" (drops `-la`; bare-`ls` variants
-  already cover the flag); synonym-soup lint probes ("verify/scrutinize/look
-  over the code" all abstain — single-word synonyms without a file anchor
-  don't clear the bar).
-- Deliberate mapping calls (documented, not hidden): unknown-tool and
-  write-intent inputs (`mypy`, `fix lint`, `apply formatting`, `lint both
-  files`) map to the closest *read-only* allowlisted op instead of
-  abstaining. That's the harness degrading gracefully within its allowlist —
-  kept as PASS-with-note rather than forced abstentions, since the planned
-  argv is safe and useful.
+| Suite | Case | Passes | Pattern | Last reason |
+| --- | --- | --- | --- | --- |
+| git-workflow | brief history | 0/5 | `00000` | expected 'git log --oneline' got 'git log' |
+| git-workflow | brief last ten | 2/5 | `01100` | expected 'git log --oneline --max-count=10' got 'git log --max-count=10' |
+| git-workflow | changed file names | 0/5 | `00000` | expected abstention but planned 'git status' |
+| git-workflow | detailed docs listing | 0/5 | `00000` | expected 'ls -la docs' got 'ls docs -la' |
+| git-workflow | different from HEAD | 0/5 | `00000` | expected 'git diff' got 'git diff --stat' |
+| git-workflow | overview of all changes | 2/5 | `10100` | expected 'git diff --stat' got 'git diff' |
+| git-workflow | scoped diff | 0/5 | `00000` | expected 'git diff src/main.py' got 'git diff' |
+| git-workflow | shortlog of contributors | 0/5 | `00000` | expected abstention but planned 'git log --oneline' |
+| git-workflow | stage then status | 4/5 | `01111` | ok |
+| git-workflow | tip commit | 0/5 | `00000` | expected abstention but planned 'git log' |
+| git-workflow | what did I break | 0/5 | `00000` | abstained: request matches no known command |
+| python-qa | build green | 3/5 | `10011` | ok |
+| python-qa | cross command chain | 0/5 | `00000` | abstained: confidence 0.49 below minimum 0.50 (risk read) |
+| python-qa | detailed tests listing | 0/5 | `00000` | abstained: confidence 0.26 below minimum 0.50 (risk read) |
+| python-qa | failure summary only | 0/5 | `00000` | expected 'pytest -q --tb=no' got 'pytest -q' |
+| python-qa | format write abstains | 4/5 | `10111` | abstained as expected: confidence 0.45 below minimum 0.50 (cli --min-confidence) |
+| python-qa | lint test file vague | 3/5 | `10011` | ok |
+| python-qa | lint then format | 0/5 | `00000` | expected 2 step(s) but Jev produced 1 (stop: confidence 0.30 below minimum 0.50 (cli --min-confidence)) |
+| python-qa | look over code | 0/5 | `00000` | abstained: 'ruff' needs a subcommand and none matches |
+| python-qa | run app vague | 0/5 | `00000` | abstained: confidence 0.38 below minimum 0.70 (risk write) |
+| python-qa | scrutinize code | 0/5 | `00000` | abstained: confidence 0.40 below minimum 0.50 (risk read) |
+| python-qa | verify code | 0/5 | `00000` | abstained: confidence 0.69 below minimum 0.70 (risk write) |
 
-## History
+The old chaining cases remain single-run-oriented: `git-workflow / stage then
+status` failed 1/5 repeats and `python-qa / lint then format` failed 5/5.
+They are regression probes only; loop evaluation remains out of scope.
 
-- v1: 10 tests each, 7/10 and 9/10. Flag stacking (`--oneline` +
-  `--max-count`) and low-confidence abstains on paraphrases.
-- v2: 10/10 each after sharpening Noul questions — but by replacing flaky
-  chains with easy single-shots (eval hacking; honest but weak).
-- v3: 26 + 24 tests — paraphrases, harder valued-flag combos
-  (`-x` + `--tb=short`), optional-slot omit/fill pairs, 15 negatives, and
-  one chain per file kept as a pinned known-failure.
-- v4: 41 + 34 tests — 25 harder one-shots added (bare/negated/slang
-  phrasings, synonym-heavy tool-less requests, flagless degradation to base
-  argv, multi-select abstentions, blame/amend near-miss negatives), each
-  verified live 2/2 before inclusion. Only the 2 known chain failures remain.
-- v5: P1/P2/P3 chaining-harness upgrade (step-aware prompts,
-  anti-repeat retry, tunable `__continue__` gate) — git-workflow 41/41
-  (chain fixed via per-test `continue_threshold = 0.3`), python-qa 33/34
-  (remaining chain failure sharpened to a model-side subcommand ambiguity).
-- v6 (this): +23 git / +18 qa round-2 one-shots (antonym flag pairs,
-  idiom-heavy phrasings, synonym tool references, unsupported-option
-  degradation, destructive near-miss negatives) — git-workflow 64/64,
-  python-qa 51/52. Every new case verified live 2/2 before inclusion;
-  input-fragile near-misses documented under "Round-2 rejections" instead
-  of being enshrined.
+## Cost and latency (all suites)
 
-## Reproduce
+Pricing: USD, as of 2026-10-18 (https://openrouter.ai/api/v1/models).
+
+| Suite | System | Models | Input tokens | Output tokens | p50 ms | p95 ms | Cost | Logprob fallbacks |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| git-workflow | jev | typesafe/jev-1.13-20260917 | 439627 | 223702 | 333.8 | 511.3 | n/a | 0 |
+| git-workflow | logprobs | openai/gpt-6-luna | 24164 | 1050 | 2789.9 | 4428.0 | 0.0029 USD | 210 |
+| git-workflow | structured | openai/gpt-6-luna | 27782 | 2924 | 4195.2 | 10514.8 | 0.0042 USD | 0 |
+| python-qa | jev | jev-1.13, typesafe/jev-1.13-20260917 | 299635 | 142286 | 364.2 | 574.4 | n/a | 0 |
+| python-qa | logprobs | openai/gpt-6-luna | 17787 | 780 | 2709.0 | 3910.6 | 0.0022 USD | 156 |
+| python-qa | structured | openai/gpt-6-luna | 20177 | 2162 | 3075.7 | 4431.7 | 0.0031 USD | 0 |
+| container-ops | jev | typesafe/jev-1.13-20260917 | 437370 | 259493 | 364.5 | 448.9 | n/a | 0 |
+| container-ops | logprobs | openai/gpt-6-luna | 45013 | 1801 | 2470.2 | 5546.2 | 0.0054 USD | 359 |
+| container-ops | structured | openai/gpt-6-luna | 48757 | 4925 | 3044.9 | 5010.2 | 0.0073 USD | 0 |
+
+## Exclusions
+
+Every declared exclusion is listed with its reason. `wrong plan` marks probes where the selected operation is not the intended one.
+Declared exclusions: 18 (wrong plan: 15).
+
+| Suite | Case | Input | Expected | Actual | Reason | Wrong plan | Runs | Pass |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| git-workflow | tip commit | show just the tip commit | abstain | git log | wrong-but-stable: the allowlist only models 5/10/20-commit counts, so the closest plan is bare git log | yes | 5 | 0 |
+| git-workflow | overview of all changes | give me an overview of all changes | git diff --stat | git diff | input-fragile: --stat toggles between runs | yes | 5 | 2 |
+| git-workflow | what did I break | what did I break? | git diff |  | input-fragile: abstains or flips to a different diff plan | yes | 5 | 0 |
+| git-workflow | different from HEAD | what's different from HEAD? | git diff | git diff --stat | input-fragile: abstains or flips to a different diff plan | yes | 5 | 0 |
+| git-workflow | shortlog of contributors | show a shortlog of contributors | abstain | git log --oneline | wrong-but-stable: plans git log --oneline although shortlog is not allowlisted | yes | 5 | 0 |
+| git-workflow | scoped diff | limit the diff to the main file | git diff src/main.py | git diff | wrong-but-stable: the optional diff scope slot is silently dropped | yes | 5 | 0 |
+| git-workflow | detailed docs listing | list the docs directory with details | ls -la docs | ls docs -la | argv-order artifact: flags are appended after the path slot, producing 'ls docs -la' | no | 5 | 0 |
+| git-workflow | changed file names | show only the names of changed files | abstain | git status | wrong-but-stable: --name-only is not allowlisted; the closest plan is a diff variant | yes | 5 | 0 |
+| python-qa | build green | is the build green? | pytest -q | pytest -q | wrong-but-stable: abstains below the read threshold while the stable twin is kept in the suite | yes | 5 | 3 |
+| python-qa | smoke test app | smoke-test the app | pytest -q | pytest -q | input-fragile: pytest-vs-python routing is defensible either way | no | 5 | 5 |
+| python-qa | failure summary only | run tests and show only the failure summary | pytest -q --tb=no | pytest -q | wrong-but-stable: drops the requested --tb=no flag | yes | 5 | 0 |
+| python-qa | detailed tests listing | list tests in detail | ls tests |  | unsupported detail flag: the allowlist has no long-listing flag, so the base listing is the honest degradation | no | 5 | 0 |
+| python-qa | verify code | verify the code | ruff check |  | input-fragile: a single-word synonym without a file anchor abstains | yes | 5 | 0 |
+| python-qa | scrutinize code | scrutinize the code | ruff check |  | input-fragile: a single-word synonym without a file anchor abstains | yes | 5 | 0 |
+| python-qa | look over code | look over the code | ruff check |  | input-fragile: a single-word synonym without a file anchor abstains | yes | 5 | 0 |
+| python-qa | lint test file vague | lint the test file | ruff check tests/test_app.py | ruff check tests/test_app.py | wrong-but-stable: the vague file reference does not resolve to the test file | yes | 5 | 3 |
+| python-qa | run app vague | run the app | python src/app.py |  | wrong-but-stable: the script slot needs the filename spelled out | yes | 5 | 0 |
+| python-qa | cross command chain | run ruff check then run tests | ruff check ; pytest -q |  | wrong-but-stable: cross-command chains abstain at the command layer | yes | 5 | 0 |
+
+## Artifacts and reproduce
 
 ```bash
 export OPENROUTER_API_KEY=...
-cd examples/git-workflow && ./run_eval.sh   # appends eval-results.jsonl
-cd ../python-qa && ./run_eval.sh
+python benchmark.py check
+python benchmark.py run --systems jev --repeats 5 --include-excluded
+python benchmark.py report
 ```
 
-`eval-results.jsonl` is git-ignored; the tables above are the checked-in
-record of the 2026-09-26 run (final verification: 1 full run each after 2
-stability runs per example).
+Raw JSONL logs and the generated report are git-ignored under
+`examples/benchmark-results/`. The checked-in
+[`BENCHMARK-REPORT.md`](BENCHMARK-REPORT.md) is the complete record for the
+run above, including every per-case result, all baseline cases, and
+provenance hashes.
 
-Both example `environment.toml` files now set `temperature = 0.0` explicitly
-(forwarded via `extra_body`), and run logs record the value used. The
-2026-09-26 results above predate that explicit setting; rerun before citing
-them as temperature-controlled measurements.
+## History
+
+Previous `v1`–`v6` development runs are retained in git history. Their tables
+were development data, not held-out evidence: they predated model pinning,
+leakage removal, repeated runs, confidence intervals, and baselines. This
+document supersedes them for citation.

@@ -271,6 +271,28 @@ Exit 0 when all tests pass, 5 on mismatches, 2 on config/eval load errors,
 and 6 when any case failed because the Jev provider call failed. See
 [Exit codes](#exit-codes). See `eval.toml.example`.
 
+## Benchmarks
+
+Benchmarked example suites live under `examples/` (see `examples/README.md`).
+`benchmark.py` runs Jev and two LiteLLM/OpenRouter baselines (both pinned to
+`openai/gpt-6-luna`) over the same trees, repeats each case, and writes JSONL
+logs plus a Markdown report with
+per-case Clopper–Pearson intervals, stability ranges, tokens, latency p50/p95,
+and cost:
+
+```bash
+export OPENROUTER_API_KEY=...
+pip install -e '.[benchmark]'
+python benchmark.py check                 # leakage + frozen-manifest guard
+python benchmark.py run                   # all suites and systems
+python benchmark.py run --suite container-ops --systems jev --repeats 5
+```
+
+`examples/BENCHMARKS.md` summarizes the latest run and links to the complete
+`examples/BENCHMARK-REPORT.md`; the held-out headline is
+`examples/container-ops`. Re-freeze after an intentional pre-run change with
+`python benchmark.py freeze --suite container-ops --ref heldout-v1`.
+
 ## Exit codes
 
 | Code | Meaning |
@@ -325,4 +347,8 @@ Nothing is written without `--log`. The file opens in append mode.
 - `src/hsom/api.py` – `Harness`/`RunResult` Python library API (shares the dispatcher/executor with the CLI)
 - `src/hsom/eval.py` – `--eval` toml loading + no-exec comparison harness
 - `src/hsom/runlog.py` – opt-in JSONL run logging (`--log`)
+- `src/hsom/stats.py` – Clopper–Pearson/Wilson intervals + percentiles
+- `src/hsom/benchmark.py` – example benchmark runner, freeze/verify, reporting
+- `src/hsom/baselines.py` – LiteLLM/OpenRouter structured-output and logprob baselines
+- `benchmark.py` – CLI wrapper (`python benchmark.py run|check|freeze`)
 - `tests/` – test suite (`PYTHONPATH=src:tests pytest`)

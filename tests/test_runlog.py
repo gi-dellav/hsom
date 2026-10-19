@@ -8,7 +8,7 @@ import pytest
 
 from hsom.dispatcher import PlanOutcome, PlannedAction
 from hsom.eval import EvalCase, EvalTestResult
-from hsom.runlog import JsonlLogger, eval_event, plan_event, result_event
+from hsom.runlog import JsonlLogger, eval_event, plan_event, result_event, run_event
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits")
@@ -84,3 +84,30 @@ def test_eval_event_fields():
     assert ev["passed"] is True and ev["steps"] == 1
     assert ev["error_kind"] is None
     assert ev["temperature"] == 0.0
+    assert ev["system"] == "jev" and ev["run_index"] == 1
+    assert ev["excluded"] is False and ev["wrong_plan"] is False
+
+
+def test_eval_event_metadata_and_exclusion():
+    case = EvalCase(name="t", input="run", expected=(("git", "status"),),
+                    expected_str=("git status",),
+                    exclude_reason="probe", wrong_plan=True)
+    result = EvalTestResult(case, True, (("git", "status"),), "ok",
+                            model="jev-1.13.0", input_tokens=7,
+                            output_tokens=3, latency_ms=12.5)
+    ev = eval_event(case, result, suite="s", run_index=3, repeats=5,
+                    system="jev", temperature=0.0)
+    assert ev["suite"] == "s" and ev["run_index"] == 3 and ev["repeats"] == 5
+    assert ev["model"] == "jev-1.13.0"
+    assert ev["input_tokens"] == 7 and ev["output_tokens"] == 3
+    assert ev["latency_ms"] == 12.5
+    assert ev["excluded"] is True and ev["wrong_plan"] is True
+    assert ev["exclude_reason"] == "probe"
+
+
+def test_run_event_fields():
+    ev = run_event(suite="s", label="heldout", model="jev-1.13.0",
+                   repeats=5, frozen=True, frozen_ref="v1")
+    assert ev["type"] == "run" and ev["suite"] == "s"
+    assert ev["label"] == "heldout" and ev["repeats"] == 5
+    assert ev["frozen"] is True and ev["frozen_ref"] == "v1"

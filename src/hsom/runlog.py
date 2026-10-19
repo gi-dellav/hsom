@@ -107,7 +107,15 @@ def result_event(step: int, argv: list[str] | None = None, *,
     }
 
 
-def eval_event(case, result, *, temperature: float | None = None) -> dict:
+def eval_event(case, result, *, temperature: float | None = None,
+               run_index: int = 1, repeats: int = 1, system: str = "jev",
+               suite: str | None = None, model: str | None = None,
+               input_tokens: int | None = None,
+               output_tokens: int | None = None,
+               latency_ms: float | None = None,
+               excluded: bool | None = None,
+               wrong_plan: bool | None = None,
+               logprob_fallbacks: int | None = None) -> dict:
     """Build an ``eval`` event from an EvalTestResult."""
     from hsom.eval import _join
 
@@ -116,9 +124,17 @@ def eval_event(case, result, *, temperature: float | None = None) -> dict:
             return None
         return " ; ".join(_join(a) for a in steps)
 
+    if excluded is None:
+        excluded = bool(getattr(case, "excluded", False))
+    if wrong_plan is None:
+        wrong_plan = bool(getattr(case, "wrong_plan", False))
     return {
         "type": "eval",
         "ts": time.time(),
+        "system": system,
+        "suite": suite,
+        "run_index": run_index,
+        "repeats": repeats,
         "name": case.name,
         "input": case.input,
         "expected": fmt(case.expected),
@@ -130,6 +146,48 @@ def eval_event(case, result, *, temperature: float | None = None) -> dict:
         "risk": result.risk,
         "steps": len(result.actual) if result.actual is not None else 0,
         "temperature": temperature,
+        "model": model if model is not None else getattr(result, "model", None),
+        "input_tokens": (input_tokens if input_tokens is not None
+                         else getattr(result, "input_tokens", None)),
+        "output_tokens": (output_tokens if output_tokens is not None
+                          else getattr(result, "output_tokens", None)),
+        "latency_ms": (latency_ms if latency_ms is not None
+                       else getattr(result, "latency_ms", None)),
+        "excluded": excluded,
+        "wrong_plan": wrong_plan,
+        "exclude_reason": getattr(case, "exclude_reason", None),
+        "logprob_fallbacks": (logprob_fallbacks if logprob_fallbacks is not None
+                              else getattr(result, "logprob_fallbacks", 0)),
+    }
+
+
+def run_event(*, suite: str, label: str = "regression",
+              eval_file: str | None = None, eval_sha256: str | None = None,
+              env_file: str | None = None, env_sha256: str | None = None,
+              model: str | None = None, provider: str | None = None,
+              temperature: float | None = None, repeats: int = 1,
+              system: str = "jev", hsom_version: str | None = None,
+              git_commit: str | None = None, frozen: bool = False,
+              frozen_ref: str | None = None) -> dict:
+    """Build a ``run`` event describing one benchmark execution."""
+    return {
+        "type": "run",
+        "ts": time.time(),
+        "system": system,
+        "suite": suite,
+        "label": label,
+        "eval_file": eval_file,
+        "eval_sha256": eval_sha256,
+        "env_file": env_file,
+        "env_sha256": env_sha256,
+        "model": model,
+        "provider": provider,
+        "temperature": temperature,
+        "repeats": repeats,
+        "hsom_version": hsom_version,
+        "git_commit": git_commit,
+        "frozen": frozen,
+        "frozen_ref": frozen_ref,
     }
 
 

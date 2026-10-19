@@ -61,6 +61,15 @@ def test_benchmark_configs_set_temperature_explicitly():
         assert cfg.temperature == 0.0, rel
 
 
+def test_benchmark_configs_pin_model_version():
+    for rel in ("examples/git-workflow/environment.toml",
+                "examples/python-qa/environment.toml",
+                "examples/container-ops/environment.toml"):
+        cfg = load_config(str(ROOT / rel))
+        assert cfg.model == "jev-1.13", rel
+        assert not cfg.model.endswith("-latest"), rel
+
+
 def test_example_configs_preserve_stake_nesting():
     for rel in ("environment.toml.example",
                 "examples/git-workflow/environment.toml",
