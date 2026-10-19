@@ -895,9 +895,9 @@ def render_report(config: BenchmarkConfig, aggregates: list[SuiteAggregate],
     wrong_total = 0
     for suite in config.suites:
         if suite.excluded is not None and suite.excluded.exists():
-            for case in load_eval(str(suite.excluded)):
+            for excluded_case in load_eval(str(suite.excluded)):
                 declared_total += 1
-                wrong_total += int(case.wrong_plan)
+                wrong_total += int(excluded_case.wrong_plan)
     lines.append(f"Declared exclusions: {declared_total} "
                  f"(wrong plan: {wrong_total}).")
     lines.append("")
@@ -910,10 +910,10 @@ def render_report(config: BenchmarkConfig, aggregates: list[SuiteAggregate],
         jev_agg = next((a for a in by_suite.get(suite.name, [])
                         if a.system == "jev"), None)
         by_name = {c.name: c for c in (jev_agg.cases if jev_agg else [])}
-        for case in declared:
-            result = by_name.get(case.name)
-            expected = "abstain" if case.expect_abstain else " ; ".join(
-                case.expected_str or ())
+        for declared_case in declared:
+            result = by_name.get(declared_case.name)
+            expected = "abstain" if declared_case.expect_abstain else " ; ".join(
+                declared_case.expected_str or ())
             if result is None:
                 actual_text = "not run"
             elif result.last_actual is None:
@@ -921,10 +921,11 @@ def render_report(config: BenchmarkConfig, aggregates: list[SuiteAggregate],
             else:
                 actual_text = result.last_actual
             lines.append(
-                f"| {suite.name} | {case.name} | {_clean(case.input)} | "
+                f"| {suite.name} | {declared_case.name} | "
+                f"{_clean(declared_case.input)} | "
                 f"{_clean(expected)} | {_clean(actual_text)} | "
-                f"{_clean(case.exclude_reason or '')} | "
-                f"{'yes' if case.wrong_plan else 'no'} | "
+                f"{_clean(declared_case.exclude_reason or '')} | "
+                f"{'yes' if declared_case.wrong_plan else 'no'} | "
                 f"{result.runs if result else 0} | "
                 f"{result.passes if result else 0} |")
     lines.append("")

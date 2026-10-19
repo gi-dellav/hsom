@@ -12,6 +12,18 @@
 
 (*note*: I'm currently working on a research paper on the inner workings and theoritical aspects of the algorithm implemented by *hsom*.)
 
+## Benchmark
+
+Strict pass rate (all repeats passed) on the bundled suites; structured and
+logprob baselines use `openai/gpt-6-luna`. Full results:
+[`examples/benchmark-results/final-gpt6/report.md`](examples/benchmark-results/final-gpt6/report.md).
+
+| Suite | Label | Jev | Structured | Logprobs |
+| --- | --- | --- | --- | --- |
+| git-workflow | regression | 95.3% | 58.7% | 66.7% |
+| python-qa | regression | 96.2% | 43.1% | 45.1% |
+| container-ops | heldout | **92.0%** | 62.0% | 68.0% |
+
 ## Setup
 
 ```bash
