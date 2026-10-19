@@ -10,19 +10,34 @@
 
 *hsom* is usable both as a CLI tool for shell-based harnesses and as a Python library for building custom harnesses.
 
+**PyPI:** https://pypi.org/project/hsom/1.0.0/
+
 (*note*: I'm currently working on a research paper on the inner workings and theoritical aspects of the algorithm implemented by *hsom*.)
 
 ## Benchmark
 
 Strict pass rate (all repeats passed) on the bundled suites; structured and
-logprob baselines use `openai/gpt-6-luna`. Full results:
-[`examples/benchmark-results/final-gpt6/report.md`](examples/benchmark-results/final-gpt6/report.md).
+logprob baselines use `openai/gpt-6-luna`.
 
 | Suite | Label | Jev | Structured | Logprobs |
 | --- | --- | --- | --- | --- |
 | git-workflow | regression | 95.3% | 58.7% | 66.7% |
 | python-qa | regression | 96.2% | 43.1% | 45.1% |
 | container-ops | heldout | **92.0%** | 62.0% | 68.0% |
+
+Cost and speed per test case:
+
+| Suite | System | Cost/test (USD) | p50 ms | p95 ms |
+| --- | --- | --- | --- | --- |
+| git-workflow | Jev | 0.0001 | 333.8 | 511.3 |
+| git-workflow | Structured | 0.00007 | 4195.2 | 10514.8 |
+| git-workflow | Logprobs | 0.00005 | 2789.9 | 4428.0 |
+| python-qa | Jev | 0.0001 | 364.2 | 574.4 |
+| python-qa | Structured | 0.00006 | 3075.7 | 4431.7 |
+| python-qa | Logprobs | 0.00004 | 2709.0 | 3910.6 |
+| container-ops | Jev | 0.0001 | 364.5 | 448.9 |
+| container-ops | Structured | 0.00015 | 3044.9 | 5010.2 |
+| container-ops | Logprobs | 0.00011 | 2470.2 | 5546.2 |
 
 ## Setup
 
