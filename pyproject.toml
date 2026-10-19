@@ -1,14 +1,14 @@
 [project]
 name = "hsom"
-version = "0.1.0"
+version = "1.0.0"
 description = "Harness for System One Models. | Connects Jev to your shell"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
-authors = [{name = "hsom contributors"}]
+authors = [{name = "Giuseppe Della Vedova"}]
 keywords = ["jev", "typesafe", "system-one", "shell", "cli", "agent-harness"]
 classifiers = [
-  "Development Status :: 4 - Beta",
+  "Development Status :: 5 - Production/Stable",
   "Environment :: Console",
   "Intended Audience :: Developers",
   "License :: OSI Approved :: MIT License",
@@ -25,6 +25,10 @@ dependencies = [
   "typesafe-sdk>=0.7.0",
   "tomli>=2.0; python_version < '3.11'",
 ]
+
+[project.urls]
+Homepage = "https://github.com/gi-dellav/hsom"
+Repository = "https://github.com/gi-dellav/hsom"
 
 [project.optional-dependencies]
 dev = [
