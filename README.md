@@ -2,11 +2,15 @@
 
 *Harness for System One Models. Runs allowlisted shell commands using decision trees.*
 
-hsom is a strict-allowlist harness. `environment.toml` defines which shell commands Jev (the TypeSafe System One classifier) may select. In one step, Jev picks: command → subcommand → flags (boolean or valued) → path slots; this works by navigating the decision tree as defined by the TOML file.
+*hsom* is a strict-allowlist harness. `environment.toml` defines which shell commands Jev (the TypeSafe System One classifier) may select. In one step, Jev picks: command → subcommand → flags (boolean or valued) → path slots; this works by navigating the decision tree as defined by the TOML file.
 
 - `read` actions run directly.
 - `write` and `destructive` actions ask for confirmation (`y/N`, default N; non-tty declines).
 - `--dry-run` previews without executing or prompting.
+
+*hsom* is usable both as a CLI tool for shell-based harnesses and as a Python library for building custom harnesses.
+
+(*note*: I'm currently working on a research paper on the inner workings and theoritical aspects of the algorithm implemented by *hsom*.)
 
 ## Setup
 
@@ -131,12 +135,6 @@ Jev says the request names no specific path, the slot is omitted. A
 missing, malformed, or non-Noul gate answer is fail-closed and also omits
 the slot. It has no effect on required slots.
 
-### Multi-path and legacy v1 style
-
-Multi-path example: `argv = ["cp", "{path:src}", "{path:dst}"]` with two `[[command.path]]` tables (max 3 slots, one placeholder per token).
-
-Legacy v1 style (`takes_path` / `path_kind` / `path_optional` plus bare `{path}`) still loads. It desugars to a single slot named `path`. Do not mix both styles.
-
 ## Usage
 
 Run `hsom` with a natural-language request:
@@ -198,157 +196,3 @@ result = h.run("run tests", cwd="/override", dry_run=True)
 summary = h.eval("eval.toml.example")
 print(f"{summary.passed}/{summary.total} passed")
 ```
-
-`load_config`, `load_eval`, `PlannedAction`, `EnvConfig` and the other
-config/result types are re-exported from `hsom`. Lower-level entry points
-live in their modules: `Harness.plan_full` returns the full
-`(outcome, questions, context, response)` tuple, and
-`resolve_argv`/`execute` are in `hsom.executor`. See
-`examples/library_usage.py` for a runnable version (`dry_run=True`
-except the live `plan` demo, which needs `TYPESAFE_API_KEY` or
-`OPENROUTER_API_KEY` + `provider="openrouter"`).
-
-### Abstention and confidence
-
-`none_of_the_above` semantics, by layer:
-
-- L1 (command): abstain.
-- L2 (subcommand): run base `argv` as-made; abstain if none.
-- Valued-flag/path layer: omit if optional; abstain if required.
-
-Missing/malformed answers are fail-closed: flags stay off, optional slots are
-omitted, a missing required path abstains, and an absent `__continue__` gate
-stops the chain.
-
-Confidence = the least-certain Choice layer.
-
-Threshold resolution: CLI `--min-confidence` (explicit override) > the stricter of per-node `min_confidence` and the per-risk tier (the tier is a floor, so a node cannot weaken it) > global. The reason names the winner, e.g. `below minimum 0.70 (risk write)`.
-
-### Chaining
-
-`--max-steps N` / `meta.max_steps` set the step budget. N is the upper bound, not a fixed count (`--steps` is a legacy alias).
-
-- The `__continue__` Noul gate is asked on every step except the last budgeted one. After a step succeeds, the loop stops as soon as Jev declines. A missing gate is treated as "stop".
-- The gate bar resolves CLI `--continue-threshold` > `[meta] continue_threshold` > 0.5 default, and is logged per step (`continue_threshold[_source]` in `plan` events). Per-eval-test `continue_threshold` overrides it for that test.
-- On step 2+, the L1 and `__continue__` instructions are step-aware: they name the step number, the completed steps (`node` + argv), and the remaining budget, so Jev plans the *next* part instead of repeating. History entries also carry `node`/`describe` alongside `argv`.
-- If a step resolves to the previous step's argv verbatim, the harness re-plans once with an anti-repeat nudge instead of executing a duplicate; a second repeat stops honestly (`repeat_guard=False` disables this for canned unit probes; eval pins it off).
-- With `--max-steps 1`, the gate is never asked and the run is single-shot.
-- After each step, the CWD is rescanned and `{step, node, describe, argv, returncode, stdout_tail, stderr_tail}` is appended to the Jev state history (`state["step"]`/`state["max_steps"]` ride along too). `--max-history N` / `meta.max_history` keeps only the N most recent entries (0 sends none; unset sends all, still bounded by the step budget).
-- The run stops on abstention, non-zero exit (unless `--no-stop-on-error`), decline, Jev's stop decision, a repeated step, or budget exhaustion.
-
-`dispatch_sequence()` in `dispatcher.py` exposes this programmatically.
-Write/destructive steps there are fail-closed unless you pass an
-`on_confirm(action, argv)` hook (the eval harness passes a permissive one
-because it never executes).
-
-## Eval mode
-
-`hsom --eval eval.toml` runs each `[[test]]` input through Jev and compares the planned argv to `expected`. Nothing executes and nothing prompts:
-
-```toml
-[[test]]
-name = "brief history"            # optional (default test-N), must be unique
-input = "brief git history"       # given to Jev
-expected = "git log --oneline"    # shell-parsed, compared as argv list
-
-[[test]]
-name = "stage then status"        # multi-step: expected is an array
-input = "stage main.py then show status"
-expected = ["git add main.py", "git status"]   # max_steps = len(expected)
-
-[[test]]
-name = "nonsense abstains"
-input = "launch the rockets"
-expect_abstain = true             # pass iff Jev abstains (no expected)
-```
-
-Per-test overrides exist for `cwd` (relative, joined onto `--cwd`), `min_confidence`, `continue_threshold`, and `repeat_guard`. `[meta]` provides defaults for all four. Eval defaults `repeat_guard` to `false` so canned multi-step fixtures may repeat an argv; set it to `true` to exercise the live anti-repeat behavior (re-plan once, then stop before executing a duplicate).
-
-- A string `expected` runs single-shot (`max_steps = 1`, no `__continue__` gate).
-- An array runs `max_steps = len(expected)`. Every planned step's argv must match the matching entry, so Jev must not stop early.
-
-Exit 0 when all tests pass, 5 on mismatches, 2 on config/eval load errors,
-and 6 when any case failed because the Jev provider call failed. See
-[Exit codes](#exit-codes). See `eval.toml.example`.
-
-## Benchmarks
-
-Benchmarked example suites live under `examples/` (see `examples/README.md`).
-`benchmark.py` runs Jev and two LiteLLM/OpenRouter baselines (both pinned to
-`openai/gpt-6-luna`) over the same trees, repeats each case, and writes JSONL
-logs plus a Markdown report with
-per-case Clopper–Pearson intervals, stability ranges, tokens, latency p50/p95,
-and cost:
-
-```bash
-export OPENROUTER_API_KEY=...
-pip install -e '.[benchmark]'
-python benchmark.py check                 # leakage + frozen-manifest guard
-python benchmark.py run                   # all suites and systems
-python benchmark.py run --suite container-ops --systems jev --repeats 5
-```
-
-`examples/BENCHMARKS.md` summarizes the latest run and links to the complete
-`examples/BENCHMARK-REPORT.md`; the held-out headline is
-`examples/container-ops`. Re-freeze after an intentional pre-run change with
-`python benchmark.py freeze --suite container-ops --ref heldout-v1`.
-
-## Exit codes
-
-| Code | Meaning |
-| ---- | ------- |
-| 0 | success |
-| 2 | config/usage error, missing API key, or unloadable eval file |
-| 3 | Jev abstained (no matching command/path or low confidence) |
-| 4 | the command executed and returned a non-zero exit status |
-| 5 | eval completed with one or more mismatches |
-| 6 | Jev/provider API error |
-| 7 | internal/unexpected harness error |
-| 8 | user declined a write/destructive action |
-| 9 | planned action refused before execution (invalid/stale plan or repeat guard) |
-| 10 | command timed out |
-| 11 | executable not found or could not be spawned |
-
-## Run logging
-
-`--log PATH` (opt-in) appends one JSON object per line. Log files are created
-with mode `0600` (owner read/write only), and an existing file is tightened to
-`0600` when opened. `result` and `eval` events include an `error_kind` field
-(`abstain`, `declined`, `refused`, `timeout`, `spawn`, `exec`, `provider`,
-`internal`) when a step ends in an error.
-
-- Interactive runs emit a `plan` event (state summary, node, flags, paths, confidence, risk, threshold/threshold_source, per-layer decisions, continue gate) followed by a `result` event (resolved argv, dry-run/declined/error, returncode, stdout, stderr) for each step. A duplicate step that is re-planned emits an extra `plan` event with `repeat_retry: true`.
-- Eval mode emits one `eval` event per `[[test]]`.
-
-Nothing is written without `--log`. The file opens in append mode.
-
-## Security notes
-
-- Executed commands never inherit hsom's provider credentials: child processes
-  receive a copy of the environment with `TYPESAFE_API_KEY`,
-  `OPENROUTER_API_KEY`, and variables ending in `_API_KEY`, `_TOKEN`,
-  `_SECRET`, `_PASSWORD`, `_PASSWD`, `_CREDENTIALS`, `_PRIVATE_KEY`,
-  `_ACCESS_KEY`, or `_SECRET_KEY` removed.
-- Commands run with `shell=False`, using only the argv template from
-  `environment.toml`; path values are revalidated against the live filesystem
-  before execution.
-- Run logs may contain command stdout/stderr, so keep them private (`0600` by
-  default) and avoid logging secrets in command output.
-
-## Layout
-
-- `src/hsom/config.py` – toml loading + validation, risk/threshold resolution
-- `src/hsom/client.py` – provider/base_url/API-key resolution, `TypeSafeClient` factory
-- `src/hsom/discovery.py` – recursive `discover()` + containment-safe validation
-- `src/hsom/questions.py` – Jev Choice/Noul builder + custom instructions
-- `src/hsom/dispatcher.py` – `system_one` call, branch reader, `dispatch_sequence`
-- `src/hsom/executor.py` – strict multi-slot/`{value}` resolution + `subprocess`
-- `src/hsom/cli.py` – `hsom` entrypoint, confirm prompt, step transcript
-- `src/hsom/api.py` – `Harness`/`RunResult` Python library API (shares the dispatcher/executor with the CLI)
-- `src/hsom/eval.py` – `--eval` toml loading + no-exec comparison harness
-- `src/hsom/runlog.py` – opt-in JSONL run logging (`--log`)
-- `src/hsom/stats.py` – Clopper–Pearson/Wilson intervals + percentiles
-- `src/hsom/benchmark.py` – example benchmark runner, freeze/verify, reporting
-- `src/hsom/baselines.py` – LiteLLM/OpenRouter structured-output and logprob baselines
-- `benchmark.py` – CLI wrapper (`python benchmark.py run|check|freeze`)
-- `tests/` – test suite (`PYTHONPATH=src:tests pytest`)
