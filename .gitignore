@@ -221,4 +221,9 @@ __marimo__/
 examples/*/eval-results.jsonl
 examples/benchmark-results/
 
+# Frozen benchmark workspaces include build artifacts and logs as fixtures.
+!examples/*/workspace/dist/
+!examples/*/workspace/logs/
+!examples/*/workspace/**/*.log
+
 PLAN*.md
